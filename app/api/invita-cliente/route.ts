@@ -43,7 +43,10 @@ export async function POST(req: NextRequest) {
 
   const { data: invito, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
     email,
-    { data: { nome_completo } }
+    {
+      data: { nome_completo },
+      redirectTo: `${new URL(req.url).origin}/imposta-password`,
+    }
   );
 
   if (error) {
@@ -59,3 +62,4 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, id: invito.user.id });
 }
+
