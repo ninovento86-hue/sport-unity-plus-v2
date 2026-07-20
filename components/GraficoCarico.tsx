@@ -25,6 +25,7 @@ export default function GraficoCarico({ voci }: { voci: Voce[] }) {
     );
   }
 
+  const primo = valori[0];
   const pesi = valori.map((v) => v.carico_kg as number);
   const min = Math.min(...pesi);
   const max = Math.max(...pesi);
@@ -41,15 +42,28 @@ export default function GraficoCarico({ voci }: { voci: Voce[] }) {
 
   return (
     <div className="flex items-center gap-3">
-      <svg viewBox="0 0 160 44" className="w-24 h-6">
-        <polyline points={punti} fill="none" stroke="#C6FF4D" strokeWidth="2.5" />
-        <circle cx={ultimoPunto[0]} cy={ultimoPunto[1]} r="3" fill="#C6FF4D" />
-      </svg>
+      <div>
+        <svg viewBox="0 0 160 44" className="w-24 h-6">
+          <polyline points={punti} fill="none" stroke="#C6FF4D" strokeWidth="2.5" />
+          <circle cx={ultimoPunto[0]} cy={ultimoPunto[1]} r="3" fill="#C6FF4D" />
+        </svg>
+        <div className="flex justify-between w-24">
+          <span className="text-[9px] text-muted font-mono">
+            {new Date(primo.data).toLocaleDateString("it-IT", {
+              day: "2-digit",
+              month: "2-digit",
+            })}
+          </span>
+          <span className="text-[9px] text-muted font-mono">
+            {new Date(ultimo.data).toLocaleDateString("it-IT", {
+              day: "2-digit",
+              month: "2-digit",
+            })}
+          </span>
+        </div>
+      </div>
       <p className="text-xs font-mono">
-        <span className="text-gold">{ultimo.carico_kg} kg</span>{" "}
-        <span className="text-muted">
-          ({new Date(ultimo.data).toLocaleDateString("it-IT")})
-        </span>
+        <span className="text-gold">{ultimo.carico_kg} kg</span>
       </p>
     </div>
   );

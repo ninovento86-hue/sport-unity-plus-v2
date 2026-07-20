@@ -14,39 +14,47 @@ type Check = {
   nota: string | null;
 };
 
+const SERIE = [
+  { chiave: "peso_kg" as const, etichetta: "Peso", colore: "#C6FF4D" },
+  {
+    chiave: "massa_grassa_percentuale" as const,
+    etichetta: "Massa grassa",
+    colore: "#FF7A6B",
+  },
+  {
+    chiave: "massa_magra_percentuale" as const,
+    etichetta: "Massa magra",
+    colore: "#5CC8FF",
+  },
+];
+
+function generaPunti(valori: number[]) {
+  if (valori.length < 2) return null;
+  const min = Math.min(...valori);
+  const max = Math.max(...valori);
+  const range = max - min || 1;
+  const step = 300 / (valori.length - 1);
+  return valori
+    .map((v, i) => {
+      const x = i * step;
+      const y = 90 - ((v - min) / range) * 80;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
 export default function StoricoCheck({ checks }: { checks: Check[] }) {
-  // checks arrivano già ordinati dal più recente al più vecchio
   const ultimo = checks[0];
   const perGrafico = [...checks].slice(0, 8).reverse(); // ordine cronologico, max 8 punti
-
-  const pesi = perGrafico
-    .map((c) => c.peso_kg)
-    .filter((p): p is number => p !== null);
-
-  const puntiSvg = (() => {
-    if (pesi.length < 2) return null;
-    const min = Math.min(...pesi);
-    const max = Math.max(...pesi);
-    const range = max - min || 1;
-    const step = 300 / (pesi.length - 1);
-    return pesi
-      .map((p, i) => {
-        const x = i * step;
-        const y = 90 - ((p - min) / range) * 80;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(" ");
-  })();
-
-  const ultimoPunto = puntiSvg
-    ? puntiSvg.split(" ").slice(-1)[0].split(",")
-    : null;
 
   if (!ultimo) {
     return (
       <p className="text-muted text-sm">Nessun check registrato ancora.</p>
     );
   }
+
+  const primaData = perGrafico[0]?.data;
+  const ultimaData = perGrafico[perGrafico.length - 1]?.data;
 
   return (
     <div>
@@ -79,27 +87,57 @@ export default function StoricoCheck({ checks }: { checks: Check[] }) {
         </div>
       </div>
 
-      {puntiSvg && (
+      {perGrafico.length >= 2 && (
         <>
-          <p className="text-xs text-muted uppercase tracking-wide mb-2">
-            Andamento peso — ultimi {pesi.length} check
-          </p>
-          <svg viewBox="0 0 300 100" className="w-full h-24 mb-4">
-            <polyline
-              points={puntiSvg}
-              fill="none"
-              stroke="#C6FF4D"
-              strokeWidth="3"
-            />
-            {ultimoPunto && (
-              <circle
-                cx={ultimoPunto[0]}
-                cy={ultimoPunto[1]}
-                r="4"
-                fill="#C6FF4D"
-              />
-            )}
+          <div className="flex items-center gap-4 mb-2">
+            {SERIE.map((s) => (
+              <span
+                key={s.chiave}
+                className="flex items-center gap-1.5 text-[10px] text-muted font-mono uppercase"
+              >
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ backgroundColor: s.colore }}
+                />
+                {s.etichetta}
+              </span>
+            ))}
+          </div>
+          <svg viewBox="0 0 300 100" className="w-full h-24">
+            {SERIE.map((s) => {
+              const valori = perGrafico
+                .map((c) => c[s.chiave])
+                .filter((v): v is number => v !== null);
+              if (valori.length < 2) return null;
+              const punti = generaPunti(valori);
+              if (!punti) return null;
+              const ultimoPunto = punti.split(" ").slice(-1)[0].split(",");
+              return (
+                <g key={s.chiave}>
+                  <polyline
+                    points={punti}
+                    fill="none"
+                    stroke={s.colore}
+                    strokeWidth="2.5"
+                  />
+                  <circle
+                    cx={ultimoPunto[0]}
+                    cy={ultimoPunto[1]}
+                    r="3.5"
+                    fill={s.colore}
+                  />
+                </g>
+              );
+            })}
           </svg>
+          <div className="flex justify-between mb-4">
+            <span className="text-[10px] text-muted font-mono">
+              {primaData && new Date(primaData).toLocaleDateString("it-IT")}
+            </span>
+            <span className="text-[10px] text-muted font-mono">
+              {ultimaData && new Date(ultimaData).toLocaleDateString("it-IT")}
+            </span>
+          </div>
         </>
       )}
 
