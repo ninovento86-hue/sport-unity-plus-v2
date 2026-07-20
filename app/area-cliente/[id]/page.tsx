@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import TimerButton from "@/components/TimerButton";
 import StoricoCheck from "@/components/StoricoCheck";
+import Chat from "@/components/Chat";
 import jsPDF from "jspdf";
 
 type Esercizio = {
@@ -78,6 +79,23 @@ export default function AreaCliente() {
   const [piano, setPiano] = useState<"plus" | "premium">("plus");
   const [pianoAlimentare, setPianoAlimentare] = useState("");
   const [prossimaValutazione, setProssimaValutazione] = useState<string | null>(null);
+  const [confermaValutazione, setConfermaValutazione] = useState<
+    "in_attesa" | "confermato" | "annullato" | null
+  >(null);
+  const [salvandoConferma, setSalvandoConferma] = useState(false);
+
+  const [appuntamenti, setAppuntamenti] = useState<
+    {
+      id: string;
+      data_ora: string;
+      stato: "richiesto" | "confermato" | "rifiutato" | "annullato";
+      nota_cliente: string | null;
+      nota_trainer: string | null;
+    }[]
+  >([]);
+  const [nuovaDataOra, setNuovaDataOra] = useState("");
+  const [nuovaNotaAppuntamento, setNuovaNotaAppuntamento] = useState("");
+  const [prenotando, setPrenotando] = useState(false);
 
   const [scheda, setScheda] = useState<Scheda | null>(null);
   const [carichi, setCarichi] = useState<Record<string, string>>({});
@@ -176,6 +194,23 @@ export default function AreaCliente() {
       setUrlFoto(urls);
     }
 
+    if (dati?.prossima_valutazione) {
+      const { data: conferma } = await supabase
+        .from("conferme_valutazione")
+        .select("stato")
+        .eq("client_id", id)
+        .eq("data_valutazione", dati.prossima_valutazione)
+        .maybeSingle();
+      setConfermaValutazione(conferma?.stato ?? "in_attesa");
+    }
+
+    const { data: appuntamentiData } = await supabase
+      .from("appuntamenti_pt")
+      .select("*")
+      .eq("client_id", id)
+      .order("data_ora", { ascending: true });
+    setAppuntamenti(appuntamentiData ?? []);
+
     setCaricando(false);
   };
 
@@ -215,6 +250,82 @@ export default function AreaCliente() {
       });
     }
     setSalvandoCarico(null);
+  };
+
+  const rispondiValutazione = async (stato: "confermato" | "annullato") => {
+    if (!prossimaValutazione) return;
+    setSalvandoConferma(true);
+    await supabase.from("conferme_valutazione").upsert(
+      {
+        client_id: id,
+        data_valutazione: prossimaValutazione,
+        stato,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "client_id,data_valutazione" }
+    );
+    setConfermaValutazione(stato);
+    setSalvandoConferma(false);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    fetch("/api/notifica-trainer", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({
+        tipo: "conferma_valutazione",
+        client_id: id,
+        dettagli: { stato, data: prossimaValutazione },
+      }),
+    }).catch(() => {});
+  };
+
+  const prenotaAppuntamento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nuovaDataOra) return;
+    setPrenotando(true);
+
+    await supabase.from("appuntamenti_pt").insert({
+      client_id: id,
+      data_ora: new Date(nuovaDataOra).toISOString(),
+      nota_cliente: nuovaNotaAppuntamento || null,
+    });
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    fetch("/api/notifica-trainer", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({
+        tipo: "richiesta_appuntamento",
+        client_id: id,
+        dettagli: {
+          data_ora: new Date(nuovaDataOra).toLocaleString("it-IT"),
+          nota: nuovaNotaAppuntamento,
+        },
+      }),
+    }).catch(() => {});
+
+    setNuovaDataOra("");
+    setNuovaNotaAppuntamento("");
+    setPrenotando(false);
+    caricaTutto();
+  };
+
+  const annullaAppuntamento = async (appuntamentoId: string) => {
+    await supabase
+      .from("appuntamenti_pt")
+      .update({ stato: "annullato" })
+      .eq("id", appuntamentoId);
+    caricaTutto();
   };
 
   const scaricaReportPDF = () => {
@@ -547,28 +658,153 @@ export default function AreaCliente() {
       {/* Calendario prossima valutazione */}
       {dataValutazione && (
         <section className="mb-8">
-          <div className="bg-panel border border-line rounded-card p-5 flex items-center gap-4">
-            <div className="bg-gold text-ink rounded-card px-4 py-2 text-center min-w-[56px]">
-              <p className="font-display text-xl leading-none">
-                {dataValutazione.getDate().toString().padStart(2, "0")}
-              </p>
-              <p className="font-mono text-[10px] uppercase">
-                {dataValutazione.toLocaleDateString("it-IT", { month: "short" })}
-              </p>
+          <div className="bg-panel border border-line rounded-card p-5">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="bg-gold text-ink rounded-card px-4 py-2 text-center min-w-[56px]">
+                <p className="font-display text-xl leading-none">
+                  {dataValutazione.getDate().toString().padStart(2, "0")}
+                </p>
+                <p className="font-mono text-[10px] uppercase">
+                  {dataValutazione.toLocaleDateString("it-IT", { month: "short" })}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted uppercase tracking-wide">
+                  Prossima valutazione
+                </p>
+                <p className="text-sm">
+                  {dataValutazione.toLocaleDateString("it-IT", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-muted uppercase tracking-wide">
-                Prossima valutazione
+
+            {confermaValutazione === "confermato" ? (
+              <p className="text-xs font-mono text-gold">✓ Hai confermato la presenza</p>
+            ) : confermaValutazione === "annullato" ? (
+              <p className="text-xs font-mono text-muted">
+                Hai annullato — contatta il trainer per un nuovo appuntamento
               </p>
-              <p className="text-sm">
-                {dataValutazione.toLocaleDateString("it-IT", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
-              </p>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => rispondiValutazione("confermato")}
+                  disabled={salvandoConferma}
+                  className="flex-1 py-2 rounded-card bg-gold text-ink font-display uppercase text-xs tracking-wide disabled:opacity-50"
+                >
+                  Confermo
+                </button>
+                <button
+                  onClick={() => rispondiValutazione("annullato")}
+                  disabled={salvandoConferma}
+                  className="flex-1 py-2 rounded-card border border-line text-muted font-display uppercase text-xs tracking-wide disabled:opacity-50"
+                >
+                  Non posso venire
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Appuntamenti PT in presenza (Premium) */}
+      {piano === "premium" && (
+        <section className="mb-8">
+          <h2 className="font-display uppercase text-lg mb-4">
+            Prenota una lezione PT
+          </h2>
+          <p className="text-xs text-muted font-mono mb-4">
+            Lezione individuale in presenza — 15€, da saldare in palestra.
+          </p>
+
+          <form
+            onSubmit={prenotaAppuntamento}
+            className="bg-panel border border-line rounded-card p-6 mb-4"
+          >
+            <label className="block text-sm text-muted mb-1">
+              Data e ora richiesta
+            </label>
+            <input
+              type="datetime-local"
+              required
+              value={nuovaDataOra}
+              onChange={(e) => setNuovaDataOra(e.target.value)}
+              className="w-full mb-3 px-3 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            />
+            <input
+              type="text"
+              placeholder="Nota (facoltativa)"
+              value={nuovaNotaAppuntamento}
+              onChange={(e) => setNuovaNotaAppuntamento(e.target.value)}
+              className="w-full mb-3 px-3 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            />
+            <button
+              type="submit"
+              disabled={prenotando}
+              className="px-5 py-2 rounded-card bg-gold text-ink font-display uppercase text-sm tracking-wide disabled:opacity-50"
+            >
+              {prenotando ? "Invio…" : "Richiedi appuntamento"}
+            </button>
+          </form>
+
+          {appuntamenti.length > 0 && (
+            <div className="border border-line rounded-card divide-y divide-line overflow-hidden">
+              {appuntamenti.map((a) => (
+                <div key={a.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm">
+                      {new Date(a.data_ora).toLocaleString("it-IT", {
+                        weekday: "short",
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                    {a.nota_trainer && (
+                      <p className="text-xs text-muted mt-0.5">{a.nota_trainer}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-[10px] font-mono uppercase px-2 py-1 rounded-card border ${
+                        a.stato === "confermato"
+                          ? "text-gold border-gold"
+                          : a.stato === "rifiutato" || a.stato === "annullato"
+                          ? "text-muted border-line"
+                          : "text-paper border-line"
+                      }`}
+                    >
+                      {a.stato}
+                    </span>
+                    {(a.stato === "richiesto" || a.stato === "confermato") && (
+                      <button
+                        onClick={() => annullaAppuntamento(a.id)}
+                        className="text-xs text-muted hover:text-red-400"
+                      >
+                        annulla
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
+          )}
+        </section>
+      )}
+
+      {/* Messaggi con il trainer (Premium) */}
+      {piano === "premium" && (
+        <section className="mb-8">
+          <h2 className="font-display uppercase text-lg mb-4">
+            Messaggi con il tuo trainer
+          </h2>
+          <div className="bg-panel border border-line rounded-card p-6">
+            <Chat clientId={id} ruolo="cliente" />
           </div>
         </section>
       )}

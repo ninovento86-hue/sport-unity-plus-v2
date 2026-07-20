@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import StoricoCheck from "@/components/StoricoCheck";
 import GraficoCarico from "@/components/GraficoCarico";
+import Chat from "@/components/Chat";
 
 type Esercizio = {
   id?: string;
@@ -114,6 +115,19 @@ export default function SchedaCliente() {
 
   const [checks, setChecks] = useState<Check[]>([]);
   const [risposte, setRisposte] = useState<Record<string, string>>({});
+  const [confermaValutazione, setConfermaValutazione] = useState<
+    "in_attesa" | "confermato" | "annullato" | null
+  >(null);
+  const [appuntamenti, setAppuntamenti] = useState<
+    {
+      id: string;
+      data_ora: string;
+      stato: "richiesto" | "confermato" | "rifiutato" | "annullato";
+      nota_cliente: string | null;
+      nota_trainer: string | null;
+    }[]
+  >([]);
+  const [elaborandoAppuntamento, setElaborandoAppuntamento] = useState<string | null>(null);
   const [salvandoRisposta, setSalvandoRisposta] = useState<string | null>(null);
   const [pesoNuovo, setPesoNuovo] = useState("");
   const [grassoNuovo, setGrassoNuovo] = useState("");
@@ -152,7 +166,26 @@ export default function SchedaCliente() {
       setProssimaValutazione(dati.prossima_valutazione ?? "");
       setPiano(dati.piano === "premium" ? "premium" : "plus");
       setPianoAlimentare(dati.piano_alimentare ?? "");
+
+      if (dati.prossima_valutazione) {
+        const { data: conferma } = await supabase
+          .from("conferme_valutazione")
+          .select("stato")
+          .eq("client_id", id)
+          .eq("data_valutazione", dati.prossima_valutazione)
+          .maybeSingle();
+        setConfermaValutazione(conferma?.stato ?? "in_attesa");
+      } else {
+        setConfermaValutazione(null);
+      }
     }
+
+    const { data: appuntamentiData } = await supabase
+      .from("appuntamenti_pt")
+      .select("*")
+      .eq("client_id", id)
+      .order("data_ora", { ascending: true });
+    setAppuntamenti(appuntamentiData ?? []);
 
     const { data: schedeData } = await supabase
       .from("schede_allenamento")
@@ -254,6 +287,7 @@ export default function SchedaCliente() {
       prossima_valutazione: prossimaValutazione || null,
       piano,
       piano_alimentare: pianoAlimentare,
+      promemoria_inviato: false,
       updated_at: new Date().toISOString(),
     };
     if (datiId) {
@@ -431,6 +465,43 @@ export default function SchedaCliente() {
     setSalvandoRisposta(null);
   };
 
+  const rispondiAppuntamento = async (
+    appuntamentoId: string,
+    stato: "confermato" | "rifiutato"
+  ) => {
+    setElaborandoAppuntamento(appuntamentoId);
+    const appuntamento = appuntamenti.find((a) => a.id === appuntamentoId);
+
+    await supabase
+      .from("appuntamenti_pt")
+      .update({ stato })
+      .eq("id", appuntamentoId);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    fetch("/api/notifica-cliente", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({
+        tipo: "esito_appuntamento",
+        client_id: id,
+        dettagli: {
+          stato,
+          data_ora: appuntamento
+            ? new Date(appuntamento.data_ora).toLocaleString("it-IT")
+            : "",
+        },
+      }),
+    }).catch(() => {});
+
+    setElaborandoAppuntamento(null);
+    caricaTutto();
+  };
+
   const eliminaCliente = async () => {
     if (
       !window.confirm(
@@ -548,8 +619,21 @@ export default function SchedaCliente() {
           type="date"
           value={prossimaValutazione}
           onChange={(e) => setProssimaValutazione(e.target.value)}
-          className="w-full mb-4 px-3 py-2 rounded-card bg-ink border border-line text-paper"
+          className="w-full mb-2 px-3 py-2 rounded-card bg-ink border border-line text-paper"
         />
+        {prossimaValutazione && confermaValutazione && (
+          <p className="text-xs font-mono mb-4">
+            {confermaValutazione === "confermato" && (
+              <span className="text-gold">✓ Il cliente ha confermato</span>
+            )}
+            {confermaValutazione === "annullato" && (
+              <span className="text-red-400">✕ Il cliente ha annullato</span>
+            )}
+            {confermaValutazione === "in_attesa" && (
+              <span className="text-muted">In attesa di conferma dal cliente</span>
+            )}
+          </p>
+        )}
         {piano === "premium" && (
           <>
             <label className="block text-sm text-muted mb-1">
@@ -911,6 +995,79 @@ export default function SchedaCliente() {
           </div>
         )}
       </section>
+
+      {/* Appuntamenti PT (Premium) */}
+      {piano === "premium" && (
+        <section className="mb-8">
+          <h2 className="font-display uppercase text-lg mb-4">
+            Appuntamenti PT (15€ a lezione, in presenza)
+          </h2>
+          {appuntamenti.length === 0 ? (
+            <p className="text-muted text-sm">Nessuna richiesta ancora.</p>
+          ) : (
+            <div className="border border-line rounded-card divide-y divide-line overflow-hidden">
+              {appuntamenti.map((a) => (
+                <div key={a.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm">
+                      {new Date(a.data_ora).toLocaleString("it-IT", {
+                        weekday: "short",
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                    {a.nota_cliente && (
+                      <p className="text-xs text-muted mt-0.5">{a.nota_cliente}</p>
+                    )}
+                  </div>
+                  {a.stato === "richiesto" ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => rispondiAppuntamento(a.id, "confermato")}
+                        disabled={elaborandoAppuntamento === a.id}
+                        className="text-xs px-3 py-1.5 rounded-card bg-gold text-ink font-display uppercase tracking-wide disabled:opacity-50"
+                      >
+                        Conferma
+                      </button>
+                      <button
+                        onClick={() => rispondiAppuntamento(a.id, "rifiutato")}
+                        disabled={elaborandoAppuntamento === a.id}
+                        className="text-xs px-3 py-1.5 rounded-card border border-line text-muted font-display uppercase tracking-wide disabled:opacity-50"
+                      >
+                        Rifiuta
+                      </button>
+                    </div>
+                  ) : (
+                    <span
+                      className={`text-[10px] font-mono uppercase px-2 py-1 rounded-card border ${
+                        a.stato === "confermato"
+                          ? "text-gold border-gold"
+                          : "text-muted border-line"
+                      }`}
+                    >
+                      {a.stato}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Messaggi con il cliente (Premium) */}
+      {piano === "premium" && (
+        <section className="mb-8">
+          <h2 className="font-display uppercase text-lg mb-4">
+            Messaggi con {nomeCliente}
+          </h2>
+          <div className="bg-panel border border-line rounded-card p-6">
+            <Chat clientId={id} ruolo="trainer" />
+          </div>
+        </section>
+      )}
 
       {/* Foto progressi */}
       <section>
