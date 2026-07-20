@@ -10,6 +10,7 @@ type Cliente = {
   email: string;
   attivo: boolean;
   created_at: string;
+  piano?: "plus" | "premium";
 };
 
 export default function Dashboard() {
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const [mostraForm, setMostraForm] = useState(false);
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
+  const [piano, setPiano] = useState<"plus" | "premium">("plus");
   const [inviando, setInviando] = useState(false);
   const [messaggio, setMessaggio] = useState<string | null>(null);
   const [eliminando, setEliminando] = useState<string | null>(null);
@@ -29,7 +31,26 @@ export default function Dashboard() {
       .select("id, nome_completo, email, attivo, created_at")
       .eq("role", "cliente")
       .order("nome_completo");
-    setClienti(data ?? []);
+
+    const lista = data ?? [];
+    if (lista.length > 0) {
+      const { data: piani } = await supabase
+        .from("dati_cliente")
+        .select("client_id, piano")
+        .in(
+          "client_id",
+          lista.map((c) => c.id)
+        );
+      const mappaPiani: Record<string, "plus" | "premium"> = {};
+      (piani ?? []).forEach((p) => {
+        mappaPiani[p.client_id] = p.piano;
+      });
+      lista.forEach((c: Cliente) => {
+        c.piano = mappaPiani[c.id] ?? "plus";
+      });
+    }
+
+    setClienti(lista);
     setCaricando(false);
   };
 
@@ -108,7 +129,7 @@ export default function Dashboard() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session?.access_token}`,
       },
-      body: JSON.stringify({ email, nome_completo: nome }),
+      body: JSON.stringify({ email, nome_completo: nome, piano }),
     });
     const risposta = await res.json();
 
@@ -118,6 +139,7 @@ export default function Dashboard() {
       setMessaggio(`Invito inviato a ${email}.`);
       setNome("");
       setEmail("");
+      setPiano("plus");
       setMostraForm(false);
       caricaClienti();
     }
@@ -179,6 +201,31 @@ export default function Dashboard() {
             onChange={(e) => setEmail(e.target.value)}
             className="w-full mb-4 px-3 py-2 rounded-card bg-ink border border-line text-paper"
           />
+          <label className="block text-sm text-muted mb-2">Piano</label>
+          <div className="flex gap-3 mb-4">
+            <button
+              type="button"
+              onClick={() => setPiano("plus")}
+              className={`flex-1 py-2 rounded-card border text-sm font-display uppercase tracking-wide transition ${
+                piano === "plus"
+                  ? "bg-gold text-ink border-gold"
+                  : "border-line text-muted"
+              }`}
+            >
+              Plus
+            </button>
+            <button
+              type="button"
+              onClick={() => setPiano("premium")}
+              className={`flex-1 py-2 rounded-card border text-sm font-display uppercase tracking-wide transition ${
+                piano === "premium"
+                  ? "bg-gold text-ink border-gold"
+                  : "border-line text-muted"
+              }`}
+            >
+              Premium
+            </button>
+          </div>
           <button
             type="submit"
             disabled={inviando}
@@ -206,7 +253,12 @@ export default function Dashboard() {
               >
                 <div>
                   <p className="font-display uppercase tracking-wide">
-                    {c.nome_completo}
+                    {c.nome_completo}{" "}
+                    {c.piano === "premium" && (
+                      <span className="text-[10px] font-mono normal-case tracking-normal text-gold border border-gold rounded px-1.5 py-0.5 align-middle">
+                        premium
+                      </span>
+                    )}
                   </p>
                   <p className="text-sm text-muted">{c.email}</p>
                 </div>

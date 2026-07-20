@@ -12,6 +12,7 @@ type Check = {
   braccio_cm: number | null;
   coscia_cm: number | null;
   nota: string | null;
+  risposta_trainer?: string | null;
 };
 
 const SERIE = [
@@ -146,14 +147,24 @@ export default function StoricoCheck({ checks }: { checks: Check[] }) {
       </p>
       <div className="border border-line rounded-card divide-y divide-line overflow-hidden">
         {checks.map((c) => (
-          <div key={c.id} className="px-4 py-2.5 text-sm flex justify-between gap-3">
-            <span className="font-mono text-xs text-muted whitespace-nowrap">
-              {new Date(c.data).toLocaleDateString("it-IT")}
-            </span>
-            <span className="font-mono text-gold whitespace-nowrap">
-              {c.peso_kg ? `${c.peso_kg} kg` : "—"}
-            </span>
-            <span className="text-muted flex-1 truncate">{c.nota}</span>
+          <div key={c.id} className="px-4 py-2.5">
+            <div className="flex justify-between gap-3 text-sm">
+              <span className="font-mono text-xs text-muted whitespace-nowrap">
+                {new Date(c.data).toLocaleDateString("it-IT")}
+              </span>
+              <span className="font-mono text-gold whitespace-nowrap">
+                {c.peso_kg ? `${c.peso_kg} kg` : "—"}
+              </span>
+              <span className="text-muted flex-1 truncate">{c.nota}</span>
+            </div>
+            {c.risposta_trainer && (
+              <p className="text-xs text-paper bg-panel2 rounded-card px-3 py-2 mt-2">
+                <span className="text-gold font-mono text-[10px] uppercase block mb-1">
+                  Dal tuo trainer
+                </span>
+                {c.risposta_trainer}
+              </p>
+            )}
           </div>
         ))}
       </div>

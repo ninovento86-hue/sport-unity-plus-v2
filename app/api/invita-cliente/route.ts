@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Crea/invita il nuovo cliente
-  const { email, nome_completo } = await req.json();
+  const { email, nome_completo, piano } = await req.json();
 
   if (!email || !nome_completo) {
     return NextResponse.json(
@@ -60,6 +60,11 @@ export async function POST(req: NextRequest) {
     .update({ nome_completo })
     .eq("id", invito.user.id);
 
+  // Crea subito la riga dati_cliente con il piano scelto (plus/premium)
+  await supabaseAdmin.from("dati_cliente").insert({
+    client_id: invito.user.id,
+    piano: piano === "premium" ? "premium" : "plus",
+  });
+
   return NextResponse.json({ ok: true, id: invito.user.id });
 }
-

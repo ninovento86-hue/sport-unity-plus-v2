@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import TimerButton from "@/components/TimerButton";
 import StoricoCheck from "@/components/StoricoCheck";
+import jsPDF from "jspdf";
 
 type Esercizio = {
   id: string;
@@ -37,6 +38,7 @@ type Check = {
   braccio_cm: number | null;
   coscia_cm: number | null;
   nota: string | null;
+  risposta_trainer: string | null;
 };
 
 type Foto = {
@@ -73,6 +75,8 @@ export default function AreaCliente() {
   const [nome, setNome] = useState("");
   const [obiettivo, setObiettivo] = useState("");
   const [noteTrainer, setNoteTrainer] = useState("");
+  const [piano, setPiano] = useState<"plus" | "premium">("plus");
+  const [pianoAlimentare, setPianoAlimentare] = useState("");
   const [prossimaValutazione, setProssimaValutazione] = useState<string | null>(null);
 
   const [scheda, setScheda] = useState<Scheda | null>(null);
@@ -105,6 +109,8 @@ export default function AreaCliente() {
       .maybeSingle();
     setObiettivo(dati?.obiettivo ?? "");
     setNoteTrainer(dati?.note_trainer ?? "");
+    setPiano(dati?.piano === "premium" ? "premium" : "plus");
+    setPianoAlimentare(dati?.piano_alimentare ?? "");
     setProssimaValutazione(dati?.prossima_valutazione ?? null);
 
     const { data: schedaData } = await supabase
@@ -147,6 +153,7 @@ export default function AreaCliente() {
       .select("*")
       .eq("client_id", id)
       .order("data", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(12);
     setChecks(checkData ?? []);
 
@@ -208,6 +215,63 @@ export default function AreaCliente() {
       });
     }
     setSalvandoCarico(null);
+  };
+
+  const scaricaReportPDF = () => {
+    const doc = new jsPDF();
+    let y = 20;
+
+    doc.setFontSize(18);
+    doc.text("Sport Unity Club — Report progressi", 14, y);
+    y += 8;
+    doc.setFontSize(11);
+    doc.text(`${nome} — generato il ${new Date().toLocaleDateString("it-IT")}`, 14, y);
+    y += 12;
+
+    doc.setFontSize(14);
+    doc.text("Check di valutazione", 14, y);
+    y += 8;
+    doc.setFontSize(10);
+    if (checks.length === 0) {
+      doc.text("Nessun check registrato.", 14, y);
+      y += 6;
+    } else {
+      checks.slice(0, 15).forEach((c) => {
+        const riga = `${new Date(c.data).toLocaleDateString("it-IT")}  —  peso: ${
+          c.peso_kg ?? "—"
+        } kg  ·  massa grassa: ${c.massa_grassa_percentuale ?? "—"}%  ·  massa magra: ${
+          c.massa_magra_percentuale ?? "—"
+        }%`;
+        doc.text(riga, 14, y);
+        y += 6;
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+      });
+    }
+
+    y += 6;
+    doc.setFontSize(14);
+    doc.text("Carichi esercizi (scheda attuale)", 14, y);
+    y += 8;
+    doc.setFontSize(10);
+    if (!scheda || scheda.esercizi.length === 0) {
+      doc.text("Nessuna scheda attiva.", 14, y);
+    } else {
+      scheda.esercizi.forEach((es) => {
+        const c = carichi[es.id];
+        const riga = `${es.giorno} — ${es.nome}: ${c ? `${c} kg` : "—"}`;
+        doc.text(riga, 14, y);
+        y += 6;
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+      });
+    }
+
+    doc.save(`report-${nome.replace(/\s+/g, "-").toLowerCase()}.pdf`);
   };
 
   const aggiungiCheck = async (e: React.FormEvent) => {
@@ -293,7 +357,12 @@ export default function AreaCliente() {
           Esci →
         </button>
       </div>
-      <h1 className="font-display text-3xl uppercase mb-8">Ciao {nome}</h1>
+      <h1 className="font-display text-3xl uppercase mb-2">Ciao {nome}</h1>
+      {piano === "premium" && (
+        <p className="text-[10px] font-mono uppercase tracking-widest text-gold border border-gold rounded px-2 py-0.5 inline-block mb-6">
+          Servizio Premium
+        </p>
+      )}
 
       {(obiettivo || noteTrainer) && (
         <section className="bg-panel border border-line rounded-card p-6 mb-8">
@@ -313,6 +382,17 @@ export default function AreaCliente() {
               <p>{noteTrainer}</p>
             </>
           )}
+        </section>
+      )}
+
+      {piano === "premium" && pianoAlimentare && (
+        <section className="bg-panel border border-line rounded-card p-6 mb-8">
+          <p className="text-xs text-gold uppercase tracking-wide mb-2">
+            Piano alimentare
+          </p>
+          <pre className="whitespace-pre-wrap font-body text-sm text-paper">
+            {pianoAlimentare}
+          </pre>
         </section>
       )}
 
@@ -398,9 +478,19 @@ export default function AreaCliente() {
 
       {/* Check di valutazione */}
       <section className="mb-8">
-        <h2 className="font-display uppercase text-lg mb-4">
-          Check di valutazione
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display uppercase text-lg">
+            Check di valutazione
+          </h2>
+          {piano === "premium" && (
+            <button
+              onClick={scaricaReportPDF}
+              className="text-xs font-mono text-gold border border-gold rounded-card px-3 py-1.5 hover:bg-gold hover:text-ink transition"
+            >
+              ↓ Report PDF
+            </button>
+          )}
+        </div>
 
         <div className="bg-panel border border-line rounded-card p-6 mb-4">
           <StoricoCheck checks={checks} />

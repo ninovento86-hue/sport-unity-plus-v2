@@ -46,6 +46,7 @@ type Check = {
   braccio_cm: number | null;
   coscia_cm: number | null;
   nota: string | null;
+  risposta_trainer: string | null;
 };
 
 type Foto = {
@@ -93,6 +94,8 @@ export default function SchedaCliente() {
   const [obiettivo, setObiettivo] = useState("");
   const [noteTrainer, setNoteTrainer] = useState("");
   const [prossimaValutazione, setProssimaValutazione] = useState("");
+  const [piano, setPiano] = useState<"plus" | "premium">("plus");
+  const [pianoAlimentare, setPianoAlimentare] = useState("");
   const [datiId, setDatiId] = useState<string | null>(null);
 
   const [schede, setSchede] = useState<Scheda[]>([]);
@@ -110,6 +113,8 @@ export default function SchedaCliente() {
   const [mostraStorico, setMostraStorico] = useState(false);
 
   const [checks, setChecks] = useState<Check[]>([]);
+  const [risposte, setRisposte] = useState<Record<string, string>>({});
+  const [salvandoRisposta, setSalvandoRisposta] = useState<string | null>(null);
   const [pesoNuovo, setPesoNuovo] = useState("");
   const [grassoNuovo, setGrassoNuovo] = useState("");
   const [magraNuova, setMagraNuova] = useState("");
@@ -145,6 +150,8 @@ export default function SchedaCliente() {
       setObiettivo(dati.obiettivo ?? "");
       setNoteTrainer(dati.note_trainer ?? "");
       setProssimaValutazione(dati.prossima_valutazione ?? "");
+      setPiano(dati.piano === "premium" ? "premium" : "plus");
+      setPianoAlimentare(dati.piano_alimentare ?? "");
     }
 
     const { data: schedeData } = await supabase
@@ -193,8 +200,14 @@ export default function SchedaCliente() {
       .select("*")
       .eq("client_id", id)
       .order("data", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(20);
     setChecks(checkData ?? []);
+    const mappaRisposte: Record<string, string> = {};
+    (checkData ?? []).forEach((c) => {
+      mappaRisposte[c.id] = c.risposta_trainer ?? "";
+    });
+    setRisposte(mappaRisposte);
 
     const { data: fotoData } = await supabase
       .from("foto_progressi")
@@ -239,6 +252,8 @@ export default function SchedaCliente() {
       obiettivo,
       note_trainer: noteTrainer,
       prossima_valutazione: prossimaValutazione || null,
+      piano,
+      piano_alimentare: pianoAlimentare,
       updated_at: new Date().toISOString(),
     };
     if (datiId) {
@@ -407,6 +422,15 @@ export default function SchedaCliente() {
     if (input) input.value = "";
   };
 
+  const salvaRisposta = async (checkId: string) => {
+    setSalvandoRisposta(checkId);
+    await supabase
+      .from("check_valutazioni")
+      .update({ risposta_trainer: risposte[checkId] || null })
+      .eq("id", checkId);
+    setSalvandoRisposta(null);
+  };
+
   const eliminaCliente = async () => {
     if (
       !window.confirm(
@@ -476,6 +500,31 @@ export default function SchedaCliente() {
         <h2 className="font-display uppercase text-lg mb-4">
           Obiettivo, note e prossima valutazione
         </h2>
+        <label className="block text-sm text-muted mb-2">Piano</label>
+        <div className="flex gap-3 mb-4">
+          <button
+            type="button"
+            onClick={() => setPiano("plus")}
+            className={`flex-1 py-2 rounded-card border text-sm font-display uppercase tracking-wide transition ${
+              piano === "plus"
+                ? "bg-gold text-ink border-gold"
+                : "border-line text-muted"
+            }`}
+          >
+            Plus
+          </button>
+          <button
+            type="button"
+            onClick={() => setPiano("premium")}
+            className={`flex-1 py-2 rounded-card border text-sm font-display uppercase tracking-wide transition ${
+              piano === "premium"
+                ? "bg-gold text-ink border-gold"
+                : "border-line text-muted"
+            }`}
+          >
+            Premium
+          </button>
+        </div>
         <label className="block text-sm text-muted mb-1">Obiettivo</label>
         <input
           value={obiettivo}
@@ -501,6 +550,22 @@ export default function SchedaCliente() {
           onChange={(e) => setProssimaValutazione(e.target.value)}
           className="w-full mb-4 px-3 py-2 rounded-card bg-ink border border-line text-paper"
         />
+        {piano === "premium" && (
+          <>
+            <label className="block text-sm text-muted mb-1">
+              Piano alimentare (solo premium, visibile al cliente)
+            </label>
+            <textarea
+              value={pianoAlimentare}
+              onChange={(e) => setPianoAlimentare(e.target.value)}
+              rows={5}
+              placeholder={
+                "Es.\nColazione: ...\nPranzo: ...\nCena: ...\nNote generali: ..."
+              }
+              className="w-full mb-4 px-3 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            />
+          </>
+        )}
         <button
           onClick={salvaDatiCliente}
           disabled={salvando}
@@ -803,6 +868,48 @@ export default function SchedaCliente() {
             </p>
           )}
         </form>
+
+        {piano === "premium" && checks.length > 0 && (
+          <div className="mt-4">
+            <p className="text-sm text-muted mb-3">
+              Rispondi ai check (visibile al cliente — servizio Premium)
+            </p>
+            <div className="space-y-3">
+              {checks.slice(0, 5).map((c) => (
+                <div
+                  key={c.id}
+                  className="border border-line rounded-card p-4 bg-panel2"
+                >
+                  <div className="flex justify-between text-xs font-mono text-muted mb-2">
+                    <span>{new Date(c.data).toLocaleDateString("it-IT")}</span>
+                    <span>
+                      {c.peso_kg ? `${c.peso_kg} kg` : ""}
+                      {c.nota ? ` — ${c.nota}` : ""}
+                    </span>
+                  </div>
+                  <textarea
+                    value={risposte[c.id] ?? ""}
+                    onChange={(e) =>
+                      setRisposte((prev) => ({
+                        ...prev,
+                        [c.id]: e.target.value,
+                      }))
+                    }
+                    onBlur={() => salvaRisposta(c.id)}
+                    rows={2}
+                    placeholder="Scrivi un commento per il cliente…"
+                    className="w-full px-3 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+                  />
+                  {salvandoRisposta === c.id && (
+                    <p className="text-[10px] text-muted font-mono mt-1">
+                      salvataggio…
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Foto progressi */}
