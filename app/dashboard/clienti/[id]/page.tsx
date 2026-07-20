@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import StoricoCheck from "@/components/StoricoCheck";
+import GraficoCarico from "@/components/GraficoCarico";
 
 type Esercizio = {
   id?: string;
@@ -95,6 +96,13 @@ export default function SchedaCliente() {
   const [datiId, setDatiId] = useState<string | null>(null);
 
   const [schede, setSchede] = useState<Scheda[]>([]);
+  const [carichi, setCarichi] = useState<Record<string, string>>({});
+  const [storicoCarichi, setStoricoCarichi] = useState<
+    Record<string, { data: string; carico_kg: number | null }[]>
+  >({});
+  const [salvandoCarico, setSalvandoCarico] = useState<string | null>(null);
+  const [erroreScheda, setErroreScheda] = useState<string | null>(null);
+  const [erroreCheck, setErroreCheck] = useState<string | null>(null);
   const [nuovoTitolo, setNuovoTitolo] = useState("");
   const [nuoviEsercizi, setNuoviEsercizi] = useState<Esercizio[]>([
     { ...ESERCIZIO_VUOTO },
@@ -152,6 +160,33 @@ export default function SchedaCliente() {
         ),
       }))
     );
+
+    const tuttiGliEserciziId = (schedeData ?? []).flatMap((s: any) =>
+      (s.esercizi ?? []).map((e: any) => e.id)
+    );
+    if (tuttiGliEserciziId.length > 0) {
+      const { data: carichiData } = await supabase
+        .from("carichi_esercizio")
+        .select("esercizio_id, carico_kg, data")
+        .in("esercizio_id", tuttiGliEserciziId)
+        .order("data", { ascending: true });
+
+      const mappaUltimo: Record<string, string> = {};
+      const mappaStorico: Record<
+        string,
+        { data: string; carico_kg: number | null }[]
+      > = {};
+      (carichiData ?? []).forEach((c) => {
+        mappaUltimo[c.esercizio_id] = c.carico_kg?.toString() ?? "";
+        if (!mappaStorico[c.esercizio_id]) mappaStorico[c.esercizio_id] = [];
+        mappaStorico[c.esercizio_id].push({
+          data: c.data,
+          carico_kg: c.carico_kg,
+        });
+      });
+      setCarichi(mappaUltimo);
+      setStoricoCarichi(mappaStorico);
+    }
 
     const { data: checkData } = await supabase
       .from("check_valutazioni")
@@ -240,10 +275,29 @@ export default function SchedaCliente() {
     setNuoviEsercizi((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const salvaCarico = async (esercizioId: string) => {
+    setSalvandoCarico(esercizioId);
+    const valore = carichi[esercizioId];
+    if (valore) {
+      await supabase.from("carichi_esercizio").insert({
+        esercizio_id: esercizioId,
+        client_id: id,
+        carico_kg: parseFloat(valore),
+        aggiornato_da: "trainer",
+      });
+      caricaTutto();
+    }
+    setSalvandoCarico(null);
+  };
+
   const creaScheda = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErroreScheda(null);
     const esercizi = nuoviEsercizi.filter((es) => es.nome.trim() !== "");
-    if (!nuovoTitolo || esercizi.length === 0) return;
+    if (!nuovoTitolo || esercizi.length === 0) {
+      setErroreScheda("Scrivi un titolo e almeno un esercizio con il nome.");
+      return;
+    }
 
     setSalvandoScheda(true);
 
@@ -253,28 +307,43 @@ export default function SchedaCliente() {
       .eq("client_id", id)
       .eq("attiva", true);
 
-    const { data: nuovaScheda } = await supabase
+    const { data: nuovaScheda, error: erroreScheda1 } = await supabase
       .from("schede_allenamento")
       .insert({ client_id: id, titolo: nuovoTitolo, attiva: true })
       .select()
       .single();
 
-    if (nuovaScheda) {
-      await supabase.from("esercizi").insert(
-        esercizi.map((es, i) => ({
-          scheda_id: nuovaScheda.id,
-          ordine: i,
-          giorno: es.giorno || "Giorno 1",
-          nome: es.nome,
-          serie: es.serie ? parseInt(es.serie) : null,
-          ripetizioni: es.ripetizioni || null,
-          recupero_secondi: es.recupero_secondi
-            ? parseInt(es.recupero_secondi)
-            : 90,
-          video_url: es.video_url || null,
-          note: es.note || null,
-        }))
+    if (erroreScheda1 || !nuovaScheda) {
+      setErroreScheda(
+        `Errore nel salvare la scheda: ${erroreScheda1?.message ?? "sconosciuto"}`
       );
+      setSalvandoScheda(false);
+      return;
+    }
+
+    const { error: erroreEsercizi } = await supabase.from("esercizi").insert(
+      esercizi.map((es, i) => ({
+        scheda_id: nuovaScheda.id,
+        ordine: i,
+        giorno: es.giorno || "Giorno 1",
+        nome: es.nome,
+        serie: es.serie ? parseInt(es.serie) : null,
+        ripetizioni: es.ripetizioni || null,
+        recupero_secondi: es.recupero_secondi
+          ? parseInt(es.recupero_secondi)
+          : 90,
+        video_url: es.video_url || null,
+        note: es.note || null,
+      }))
+    );
+
+    if (erroreEsercizi) {
+      setErroreScheda(
+        `La scheda è stata creata ma gli esercizi non si sono salvati: ${erroreEsercizi.message}`
+      );
+      setSalvandoScheda(false);
+      caricaTutto();
+      return;
     }
 
     setNuovoTitolo("");
@@ -285,8 +354,9 @@ export default function SchedaCliente() {
 
   const aggiungiCheck = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErroreCheck(null);
     setSalvandoCheck(true);
-    await supabase.from("check_valutazioni").insert({
+    const { error } = await supabase.from("check_valutazioni").insert({
       client_id: id,
       peso_kg: pesoNuovo ? parseFloat(pesoNuovo) : null,
       massa_grassa_percentuale: grassoNuovo ? parseFloat(grassoNuovo) : null,
@@ -294,6 +364,11 @@ export default function SchedaCliente() {
       nota: notaCheckNuova || null,
       inserito_da: "trainer",
     });
+    if (error) {
+      setErroreCheck(`Errore: ${error.message}`);
+      setSalvandoCheck(false);
+      return;
+    }
     setPesoNuovo("");
     setGrassoNuovo("");
     setMagraNuova("");
@@ -458,27 +533,47 @@ export default function SchedaCliente() {
                 </p>
                 <div className="divide-y divide-line">
                   {gruppo.esercizi.map((es) => (
-                    <div
-                      key={es.id}
-                      className="py-2 text-sm flex justify-between items-center gap-2"
-                    >
-                      <span>
-                        {es.nome}
-                        {es.video_url && (
-                          <a
-                            href={es.video_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="ml-2 text-gold text-xs"
-                          >
-                            ▶ video
-                          </a>
-                        )}
-                      </span>
-                      <span className="font-mono text-xs text-muted whitespace-nowrap">
-                        {es.serie ?? "—"}×{es.ripetizioni ?? "—"} · rec.{" "}
-                        {es.recupero_secondi}s
-                      </span>
+                    <div key={es.id} className="py-2">
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="text-sm">
+                          {es.nome}
+                          {es.video_url && (
+                            <a
+                              href={es.video_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ml-2 text-gold text-xs"
+                            >
+                              ▶ video
+                            </a>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-xs text-muted whitespace-nowrap">
+                            {es.serie ?? "—"}×{es.ripetizioni ?? "—"} · rec.{" "}
+                            {es.recupero_secondi}s
+                          </span>
+                          <input
+                            type="number"
+                            step="0.5"
+                            placeholder="kg"
+                            value={carichi[es.id] ?? ""}
+                            onChange={(ev) =>
+                              setCarichi((prev) => ({
+                                ...prev,
+                                [es.id]: ev.target.value,
+                              }))
+                            }
+                            onBlur={() => salvaCarico(es.id)}
+                            className="w-16 px-2 py-1 rounded-card bg-ink border border-line text-paper text-xs font-mono"
+                          />
+                        </div>
+                      </div>
+                      {storicoCarichi[es.id] && (
+                        <div className="mt-1">
+                          <GraficoCarico voci={storicoCarichi[es.id]} />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -595,6 +690,11 @@ export default function SchedaCliente() {
             >
               {salvandoScheda ? "Salvataggio…" : "Pubblica scheda"}
             </button>
+            {erroreScheda && (
+              <p className="text-sm text-red-400 mt-3" role="alert">
+                {erroreScheda}
+              </p>
+            )}
           </div>
         </form>
 
@@ -697,6 +797,11 @@ export default function SchedaCliente() {
           >
             {salvandoCheck ? "Salvataggio…" : "Salva check"}
           </button>
+          {erroreCheck && (
+            <p className="text-sm text-red-400 mt-3" role="alert">
+              {erroreCheck}
+            </p>
+          )}
         </form>
       </section>
 

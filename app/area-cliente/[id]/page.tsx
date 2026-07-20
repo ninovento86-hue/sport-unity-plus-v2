@@ -76,6 +76,8 @@ export default function AreaCliente() {
   const [prossimaValutazione, setProssimaValutazione] = useState<string | null>(null);
 
   const [scheda, setScheda] = useState<Scheda | null>(null);
+  const [carichi, setCarichi] = useState<Record<string, string>>({});
+  const [salvandoCarico, setSalvandoCarico] = useState<string | null>(null);
   const [checks, setChecks] = useState<Check[]>([]);
   const [foto, setFoto] = useState<Foto[]>([]);
   const [urlFoto, setUrlFoto] = useState<Record<string, string>>({});
@@ -121,6 +123,23 @@ export default function AreaCliente() {
           (a, b) => a.ordine - b.ordine
         ),
       });
+
+      const idEsercizi = (schedaData.esercizi as Esercizio[]).map((e) => e.id);
+      if (idEsercizi.length > 0) {
+        const { data: carichiData } = await supabase
+          .from("carichi_esercizio")
+          .select("esercizio_id, carico_kg, data")
+          .in("esercizio_id", idEsercizi)
+          .order("data", { ascending: false });
+        const mappa: Record<string, string> = {};
+        (carichiData ?? []).forEach((c) => {
+          // il primo che troviamo per esercizio è il più recente
+          if (!(c.esercizio_id in mappa)) {
+            mappa[c.esercizio_id] = c.carico_kg?.toString() ?? "";
+          }
+        });
+        setCarichi(mappa);
+      }
     }
 
     const { data: checkData } = await supabase
@@ -175,6 +194,20 @@ export default function AreaCliente() {
   const disconnetti = async () => {
     await supabase.auth.signOut();
     router.push("/");
+  };
+
+  const salvaCarico = async (esercizioId: string) => {
+    setSalvandoCarico(esercizioId);
+    const valore = carichi[esercizioId];
+    if (valore) {
+      await supabase.from("carichi_esercizio").insert({
+        esercizio_id: esercizioId,
+        client_id: id,
+        carico_kg: parseFloat(valore),
+        aggiornato_da: "cliente",
+      });
+    }
+    setSalvandoCarico(null);
   };
 
   const aggiungiCheck = async (e: React.FormEvent) => {
@@ -333,6 +366,25 @@ export default function AreaCliente() {
                           {es.ripetizioni ? `${es.ripetizioni} rip.` : ""}
                           {es.note ? ` — ${es.note}` : ""}
                         </p>
+                        <div className="flex items-center gap-1 mt-1">
+                          <input
+                            type="number"
+                            step="0.5"
+                            placeholder="kg"
+                            value={carichi[es.id] ?? ""}
+                            onChange={(ev) =>
+                              setCarichi((prev) => ({
+                                ...prev,
+                                [es.id]: ev.target.value,
+                              }))
+                            }
+                            onBlur={() => salvaCarico(es.id)}
+                            className="w-16 px-2 py-1 rounded-card bg-ink border border-line text-paper text-xs font-mono"
+                          />
+                          <span className="text-[10px] text-muted font-mono">
+                            {salvandoCarico === es.id ? "salvo…" : "carico"}
+                          </span>
+                        </div>
                       </div>
                       <TimerButton secondi={es.recupero_secondi} />
                     </div>
