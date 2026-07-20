@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [email, setEmail] = useState("");
   const [inviando, setInviando] = useState(false);
   const [messaggio, setMessaggio] = useState<string | null>(null);
+  const [eliminando, setEliminando] = useState<string | null>(null);
 
   const caricaClienti = async () => {
     const { data } = await supabase
@@ -54,6 +55,43 @@ export default function Dashboard() {
     };
     guardia();
   }, [router]);
+
+  const eliminaCliente = async (id: string, nome: string) => {
+    if (
+      !window.confirm(
+        `Eliminare definitivamente ${nome}? Verranno cancellati anche schede, check e foto. Non si può annullare.`
+      )
+    ) {
+      return;
+    }
+    setEliminando(id);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const res = await fetch("/api/elimina-cliente", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ client_id: id }),
+    });
+
+    if (res.ok) {
+      caricaClienti();
+    } else {
+      const risposta = await res.json();
+      alert(`Errore durante l'eliminazione: ${risposta.errore ?? "sconosciuto"}`);
+    }
+    setEliminando(null);
+  };
+
+  const disconnetti = async () => {
+    await supabase.auth.signOut();
+    router.push("/");
+  };
 
   const invitaCliente = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,6 +128,17 @@ export default function Dashboard() {
     <main className="min-h-screen px-6 py-10 max-w-3xl mx-auto">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/icona.png" alt="" className="h-8 mb-6" />
+      <div className="flex items-center justify-between mb-1">
+        <p className="font-mono text-xs tracking-[0.3em] text-gold uppercase">
+          Area trainer
+        </p>
+        <button
+          onClick={disconnetti}
+          className="text-xs font-mono text-muted hover:text-paper transition"
+        >
+          Esci →
+        </button>
+      </div>
       <div className="flex items-center justify-between mb-10">
         <div>
           <p className="font-mono text-xs tracking-[0.3em] text-gold uppercase mb-2">
@@ -150,10 +199,10 @@ export default function Dashboard() {
       ) : (
         <ul className="divide-y divide-line border border-line rounded-card overflow-hidden">
           {clienti.map((c) => (
-            <li key={c.id}>
+            <li key={c.id} className="flex items-center">
               <a
                 href={`/dashboard/clienti/${c.id}`}
-                className="flex items-center justify-between px-5 py-4 hover:bg-panel transition"
+                className="flex-1 flex items-center justify-between px-5 py-4 hover:bg-panel transition"
               >
                 <div>
                   <p className="font-display uppercase tracking-wide">
@@ -163,6 +212,15 @@ export default function Dashboard() {
                 </div>
                 <span className="font-mono text-xs text-muted">→</span>
               </a>
+              <button
+                onClick={() => eliminaCliente(c.id, c.nome_completo)}
+                disabled={eliminando === c.id}
+                className="px-4 py-4 text-muted hover:text-red-400 transition text-xs font-mono disabled:opacity-50"
+                aria-label={`Elimina ${c.nome_completo}`}
+                title="Elimina cliente"
+              >
+                {eliminando === c.id ? "…" : "🗑"}
+              </button>
             </li>
           ))}
         </ul>

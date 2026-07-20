@@ -8,11 +8,13 @@ import StoricoCheck from "@/components/StoricoCheck";
 
 type Esercizio = {
   id: string;
+  giorno: string;
   ordine: number;
   nome: string;
   serie: number | null;
   ripetizioni: string | null;
   recupero_secondi: number;
+  video_url: string | null;
   note: string | null;
 };
 
@@ -50,6 +52,19 @@ const TIPI_FOTO: { chiave: Foto["tipo"]; etichetta: string }[] = [
   { chiave: "retro", etichetta: "Di schiena" },
 ];
 
+function raggruppaPerGiorno(esercizi: Esercizio[]) {
+  const gruppi: Record<string, Esercizio[]> = {};
+  const ordine: string[] = [];
+  for (const es of esercizi) {
+    if (!gruppi[es.giorno]) {
+      gruppi[es.giorno] = [];
+      ordine.push(es.giorno);
+    }
+    gruppi[es.giorno].push(es);
+  }
+  return ordine.map((giorno) => ({ giorno, esercizi: gruppi[giorno] }));
+}
+
 export default function AreaCliente() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -69,10 +84,9 @@ export default function AreaCliente() {
   const [grassoNuovo, setGrassoNuovo] = useState("");
   const [magraNuova, setMagraNuova] = useState("");
   const [notaNuova, setNotaNuova] = useState("");
+  const [caricando, setCaricando] = useState(true);
   const [salvandoCheck, setSalvandoCheck] = useState(false);
   const [caricandoFotoTipo, setCaricandoFotoTipo] = useState<string | null>(null);
-
-  const [caricando, setCaricando] = useState(true);
 
   const caricaTutto = async () => {
     const { data: profile } = await supabase
@@ -158,6 +172,11 @@ export default function AreaCliente() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  const disconnetti = async () => {
+    await supabase.auth.signOut();
+    router.push("/");
+  };
+
   const aggiungiCheck = async (e: React.FormEvent) => {
     e.preventDefault();
     setSalvandoCheck(true);
@@ -219,7 +238,6 @@ export default function AreaCliente() {
     ? new Date(prossimaValutazione)
     : null;
 
-  // Raggruppa le foto per data di scatto (sessione)
   const sessioniFoto = Array.from(
     new Set(foto.map((f) => f.data_scatto))
   ).map((data) => ({
@@ -231,9 +249,17 @@ export default function AreaCliente() {
     <main className="min-h-screen px-6 py-10 max-w-2xl mx-auto">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/icona.png" alt="" className="h-8 mb-6" />
-      <p className="font-mono text-xs tracking-[0.3em] text-gold uppercase mb-2">
-        Il tuo spazio
-      </p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="font-mono text-xs tracking-[0.3em] text-gold uppercase">
+          Il tuo spazio
+        </p>
+        <button
+          onClick={disconnetti}
+          className="text-xs font-mono text-muted hover:text-paper transition"
+        >
+          Esci →
+        </button>
+      </div>
       <h1 className="font-display text-3xl uppercase mb-8">Ciao {nome}</h1>
 
       {(obiettivo || noteTrainer) && (
@@ -257,7 +283,7 @@ export default function AreaCliente() {
         </section>
       )}
 
-      {/* Scheda con timer */}
+      {/* Scheda con timer, raggruppata per giorno */}
       <section className="mb-8">
         <h2 className="font-display uppercase text-lg mb-4">
           La tua scheda
@@ -276,25 +302,44 @@ export default function AreaCliente() {
                 {new Date(scheda.updated_at).toLocaleDateString("it-IT")}
               </span>
             </div>
-            <div className="divide-y divide-line">
-              {scheda.esercizi.map((es) => (
-                <div
-                  key={es.id}
-                  className="flex items-center justify-between py-3 gap-3"
-                >
-                  <div>
-                    <p className="text-sm">{es.nome}</p>
-                    <p className="font-mono text-xs text-muted">
-                      {es.serie ? `${es.serie} serie` : ""}
-                      {es.serie && es.ripetizioni ? " × " : ""}
-                      {es.ripetizioni ? `${es.ripetizioni} rip.` : ""}
-                      {es.note ? ` — ${es.note}` : ""}
-                    </p>
-                  </div>
-                  <TimerButton secondi={es.recupero_secondi} />
+            {raggruppaPerGiorno(scheda.esercizi).map((gruppo) => (
+              <div key={gruppo.giorno} className="mb-5 last:mb-0">
+                <p className="font-mono text-xs text-gold uppercase tracking-wide mb-2">
+                  {gruppo.giorno}
+                </p>
+                <div className="divide-y divide-line">
+                  {gruppo.esercizi.map((es) => (
+                    <div
+                      key={es.id}
+                      className="flex items-center justify-between py-3 gap-3"
+                    >
+                      <div>
+                        <p className="text-sm">
+                          {es.nome}
+                          {es.video_url && (
+                            <a
+                              href={es.video_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ml-2 text-gold text-xs align-middle"
+                            >
+                              ▶ video
+                            </a>
+                          )}
+                        </p>
+                        <p className="font-mono text-xs text-muted">
+                          {es.serie ? `${es.serie} serie` : ""}
+                          {es.serie && es.ripetizioni ? " × " : ""}
+                          {es.ripetizioni ? `${es.ripetizioni} rip.` : ""}
+                          {es.note ? ` — ${es.note}` : ""}
+                        </p>
+                      </div>
+                      <TimerButton secondi={es.recupero_secondi} />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         )}
       </section>
