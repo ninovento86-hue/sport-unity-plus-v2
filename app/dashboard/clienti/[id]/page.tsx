@@ -132,6 +132,11 @@ export default function SchedaCliente() {
   const [pesoNuovo, setPesoNuovo] = useState("");
   const [grassoNuovo, setGrassoNuovo] = useState("");
   const [magraNuova, setMagraNuova] = useState("");
+  const [vitaNuova, setVitaNuova] = useState("");
+  const [fianchiNuovi, setFianchiNuovi] = useState("");
+  const [pettoNuovo, setPettoNuovo] = useState("");
+  const [braccioNuovo, setBraccioNuovo] = useState("");
+  const [cosciaNuova, setCosciaNuova] = useState("");
   const [notaCheckNuova, setNotaCheckNuova] = useState("");
   const [salvandoCheck, setSalvandoCheck] = useState(false);
 
@@ -410,6 +415,11 @@ export default function SchedaCliente() {
       peso_kg: pesoNuovo ? parseFloat(pesoNuovo) : null,
       massa_grassa_percentuale: grassoNuovo ? parseFloat(grassoNuovo) : null,
       massa_magra_percentuale: magraNuova ? parseFloat(magraNuova) : null,
+      vita_cm: vitaNuova ? parseFloat(vitaNuova) : null,
+      fianchi_cm: fianchiNuovi ? parseFloat(fianchiNuovi) : null,
+      petto_cm: pettoNuovo ? parseFloat(pettoNuovo) : null,
+      braccio_cm: braccioNuovo ? parseFloat(braccioNuovo) : null,
+      coscia_cm: cosciaNuova ? parseFloat(cosciaNuova) : null,
       nota: notaCheckNuova || null,
       inserito_da: "trainer",
     });
@@ -421,6 +431,11 @@ export default function SchedaCliente() {
     setPesoNuovo("");
     setGrassoNuovo("");
     setMagraNuova("");
+    setVitaNuova("");
+    setFianchiNuovi("");
+    setPettoNuovo("");
+    setBraccioNuovo("");
+    setCosciaNuova("");
     setNotaCheckNuova("");
     setSalvandoCheck(false);
     caricaTutto();
@@ -932,6 +947,51 @@ export default function SchedaCliente() {
               className="px-3 py-2 rounded-card bg-ink border border-line text-paper text-sm"
             />
           </div>
+          <p className="text-xs text-muted uppercase tracking-wide mb-2">
+            Circonferenze (cm)
+          </p>
+          <div className="grid grid-cols-5 gap-2 mb-3">
+            <input
+              type="number"
+              step="0.1"
+              placeholder="Vita"
+              value={vitaNuova}
+              onChange={(e) => setVitaNuova(e.target.value)}
+              className="px-2 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            />
+            <input
+              type="number"
+              step="0.1"
+              placeholder="Fianchi"
+              value={fianchiNuovi}
+              onChange={(e) => setFianchiNuovi(e.target.value)}
+              className="px-2 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            />
+            <input
+              type="number"
+              step="0.1"
+              placeholder="Petto"
+              value={pettoNuovo}
+              onChange={(e) => setPettoNuovo(e.target.value)}
+              className="px-2 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            />
+            <input
+              type="number"
+              step="0.1"
+              placeholder="Braccio"
+              value={braccioNuovo}
+              onChange={(e) => setBraccioNuovo(e.target.value)}
+              className="px-2 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            />
+            <input
+              type="number"
+              step="0.1"
+              placeholder="Coscia"
+              value={cosciaNuova}
+              onChange={(e) => setCosciaNuova(e.target.value)}
+              className="px-2 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            />
+          </div>
           <input
             type="text"
             placeholder="Nota (facoltativa)"
@@ -1128,3 +1188,4 @@ export default function SchedaCliente() {
     </main>
   );
 }
+
