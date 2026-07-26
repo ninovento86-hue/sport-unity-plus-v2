@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import PulsantePianoAlimentarePDF from "@/components/PianoAlimentarePDF";
 
 export default function AlimentazioneAreaCliente() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
+  const [nome, setNome] = useState("");
   const [piano, setPiano] = useState<"plus" | "premium">("plus");
   const [pianoAlimentare, setPianoAlimentare] = useState("");
   const [caricando, setCaricando] = useState(true);
@@ -25,6 +27,13 @@ export default function AlimentazioneAreaCliente() {
         router.replace(`/area-cliente/${session.user.id}/alimentazione`);
         return;
       }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("nome_completo")
+        .eq("id", id)
+        .single();
+      setNome(profile?.nome_completo ?? "");
 
       const { data: dati } = await supabase
         .from("dati_cliente")
@@ -56,7 +65,16 @@ export default function AlimentazioneAreaCliente() {
       >
         ← Il tuo spazio
       </a>
-      <h1 className="font-display text-2xl uppercase mb-6">Piano alimentare</h1>
+
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="font-display text-2xl uppercase">Piano alimentare</h1>
+        {piano === "premium" && pianoAlimentare && (
+          <PulsantePianoAlimentarePDF
+            nomeCliente={nome}
+            pianoAlimentare={pianoAlimentare}
+          />
+        )}
+      </div>
 
       {piano !== "premium" ? (
         <p className="text-muted text-sm">
