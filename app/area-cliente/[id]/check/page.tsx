@@ -29,6 +29,12 @@ export default function CheckAreaCliente() {
   const [piano, setPiano] = useState<"plus" | "premium">("plus");
   const [checks, setChecks] = useState<Check[]>([]);
 
+  const [prossimaValutazione, setProssimaValutazione] = useState<string | null>(null);
+  const [confermaValutazione, setConfermaValutazione] = useState<
+    "in_attesa" | "confermato" | "annullato" | null
+  >(null);
+  const [salvandoConferma, setSalvandoConferma] = useState(false);
+
   const [pesoNuovo, setPesoNuovo] = useState("");
   const [grassoNuovo, setGrassoNuovo] = useState("");
   const [magraNuova, setMagraNuova] = useState("");
@@ -46,10 +52,23 @@ export default function CheckAreaCliente() {
 
     const { data: dati } = await supabase
       .from("dati_cliente")
-      .select("piano")
+      .select("piano, prossima_valutazione")
       .eq("client_id", id)
       .maybeSingle();
     setPiano(dati?.piano === "premium" ? "premium" : "plus");
+    setProssimaValutazione(dati?.prossima_valutazione ?? null);
+
+    if (dati?.prossima_valutazione) {
+      const { data: conferma } = await supabase
+        .from("conferme_valutazione")
+        .select("stato")
+        .eq("client_id", id)
+        .eq("data_valutazione", dati.prossima_valutazione)
+        .maybeSingle();
+      setConfermaValutazione(conferma?.stato ?? "in_attesa");
+    } else {
+      setConfermaValutazione(null);
+    }
 
     const { data: checkData } = await supabase
       .from("check_valutazioni")
@@ -82,6 +101,38 @@ export default function CheckAreaCliente() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  const rispondiValutazione = async (stato: "confermato" | "annullato") => {
+    if (!prossimaValutazione) return;
+    setSalvandoConferma(true);
+    await supabase.from("conferme_valutazione").upsert(
+      {
+        client_id: id,
+        data_valutazione: prossimaValutazione,
+        stato,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "client_id,data_valutazione" }
+    );
+    setConfermaValutazione(stato);
+    setSalvandoConferma(false);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    fetch("/api/notifica-trainer", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({
+        tipo: "conferma_valutazione",
+        client_id: id,
+        dettagli: { stato, data: prossimaValutazione },
+      }),
+    }).catch(() => {});
+  };
+
   const aggiungiCheck = async (e: React.FormEvent) => {
     e.preventDefault();
     setSalvandoCheck(true);
@@ -109,6 +160,10 @@ export default function CheckAreaCliente() {
     );
   }
 
+  const dataValutazione = prossimaValutazione
+    ? new Date(prossimaValutazione)
+    : null;
+
   return (
     <main className="min-h-screen px-6 py-10 max-w-2xl mx-auto">
       <a
@@ -126,6 +181,60 @@ export default function CheckAreaCliente() {
           <PulsanteReportPDF nomeCliente={nome} checks={checks} />
         )}
       </div>
+
+      {/* Prossima valutazione / conferma presenza */}
+      {dataValutazione && (
+        <div className="bg-panel border border-line rounded-card p-5 mb-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="bg-gold text-ink rounded-card px-4 py-2 text-center min-w-[56px]">
+              <p className="font-display text-xl leading-none">
+                {dataValutazione.getDate().toString().padStart(2, "0")}
+              </p>
+              <p className="font-mono text-[10px] uppercase">
+                {dataValutazione.toLocaleDateString("it-IT", { month: "short" })}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted uppercase tracking-wide">
+                Prossima valutazione
+              </p>
+              <p className="text-sm">
+                {dataValutazione.toLocaleDateString("it-IT", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </p>
+            </div>
+          </div>
+
+          {confermaValutazione === "confermato" ? (
+            <p className="text-xs font-mono text-gold">✓ Hai confermato la presenza</p>
+          ) : confermaValutazione === "annullato" ? (
+            <p className="text-xs font-mono text-muted">
+              Hai annullato — contatta il trainer per un nuovo appuntamento
+            </p>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={() => rispondiValutazione("confermato")}
+                disabled={salvandoConferma}
+                className="flex-1 py-2 rounded-card bg-gold text-ink font-display uppercase text-xs tracking-wide disabled:opacity-50"
+              >
+                Confermo
+              </button>
+              <button
+                onClick={() => rispondiValutazione("annullato")}
+                disabled={salvandoConferma}
+                className="flex-1 py-2 rounded-card border border-line text-muted font-display uppercase text-xs tracking-wide disabled:opacity-50"
+              >
+                Non posso venire
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="bg-panel border border-line rounded-card p-6 mb-4">
         <StoricoCheck checks={checks} />
