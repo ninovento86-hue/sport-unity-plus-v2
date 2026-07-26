@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import TimerButton from "@/components/TimerButton";
 import StoricoCheck from "@/components/StoricoCheck";
 import Chat from "@/components/Chat";
-import jsPDF from "jspdf";
+import PulsanteReportPDF from "@/components/ReportPDF";
 
 type Esercizio = {
   id: string;
@@ -328,63 +328,6 @@ export default function AreaCliente() {
     caricaTutto();
   };
 
-  const scaricaReportPDF = () => {
-    const doc = new jsPDF();
-    let y = 20;
-
-    doc.setFontSize(18);
-    doc.text("Sport Unity Club — Report progressi", 14, y);
-    y += 8;
-    doc.setFontSize(11);
-    doc.text(`${nome} — generato il ${new Date().toLocaleDateString("it-IT")}`, 14, y);
-    y += 12;
-
-    doc.setFontSize(14);
-    doc.text("Check di valutazione", 14, y);
-    y += 8;
-    doc.setFontSize(10);
-    if (checks.length === 0) {
-      doc.text("Nessun check registrato.", 14, y);
-      y += 6;
-    } else {
-      checks.slice(0, 15).forEach((c) => {
-        const riga = `${new Date(c.data).toLocaleDateString("it-IT")}  —  peso: ${
-          c.peso_kg ?? "—"
-        } kg  ·  massa grassa: ${c.massa_grassa_percentuale ?? "—"}%  ·  massa magra: ${
-          c.massa_magra_percentuale ?? "—"
-        }%`;
-        doc.text(riga, 14, y);
-        y += 6;
-        if (y > 270) {
-          doc.addPage();
-          y = 20;
-        }
-      });
-    }
-
-    y += 6;
-    doc.setFontSize(14);
-    doc.text("Carichi esercizi (scheda attuale)", 14, y);
-    y += 8;
-    doc.setFontSize(10);
-    if (!scheda || scheda.esercizi.length === 0) {
-      doc.text("Nessuna scheda attiva.", 14, y);
-    } else {
-      scheda.esercizi.forEach((es) => {
-        const c = carichi[es.id];
-        const riga = `${es.giorno} — ${es.nome}: ${c ? `${c} kg` : "—"}`;
-        doc.text(riga, 14, y);
-        y += 6;
-        if (y > 270) {
-          doc.addPage();
-          y = 20;
-        }
-      });
-    }
-
-    doc.save(`report-${nome.replace(/\s+/g, "-").toLowerCase()}.pdf`);
-  };
-
   const aggiungiCheck = async (e: React.FormEvent) => {
     e.preventDefault();
     setSalvandoCheck(true);
@@ -594,12 +537,7 @@ export default function AreaCliente() {
             Check di valutazione
           </h2>
           {piano === "premium" && (
-            <button
-              onClick={scaricaReportPDF}
-              className="text-xs font-mono text-gold border border-gold rounded-card px-3 py-1.5 hover:bg-gold hover:text-ink transition"
-            >
-              ↓ Report PDF
-            </button>
+            <PulsanteReportPDF nomeCliente={nome} checks={checks} />
           )}
         </div>
 
