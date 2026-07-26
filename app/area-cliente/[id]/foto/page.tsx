@@ -116,7 +116,7 @@ export default function FotoAreaCliente() {
 
   return (
     <main className="min-h-screen px-6 py-10 max-w-2xl mx-auto">
-      
+      <a
         href={`/area-cliente/${id}`}
         className="text-sm text-muted hover:text-paper inline-block mb-4"
       >
