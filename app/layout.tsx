@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import RegistraServiceWorker from "@/components/RegistraServiceWorker";
 
 export const metadata: Metadata = {
   title: "Sport Unity Club — Portale Allenamento",
@@ -26,6 +27,7 @@ export default function RootLayout({
   return (
     <html lang="it">
       <body className="bg-ink text-paper font-body min-h-screen">
+        <RegistraServiceWorker />
         {children}
       </body>
     </html>
