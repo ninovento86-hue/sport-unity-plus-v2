@@ -161,7 +161,8 @@ export default function Dashboard() {
           Esci →
         </button>
       </div>
-      <div className="flex items-center justify-between mb-10">
+
+      <div className="flex items-center justify-between mb-4">
         <div>
           <p className="font-mono text-xs tracking-[0.3em] text-gold uppercase mb-2">
             Area trainer
@@ -174,6 +175,29 @@ export default function Dashboard() {
         >
           + Nuovo cliente
         </button>
+      </div>
+
+      <div className="flex gap-3 mb-10">
+        <a
+          href="/dashboard/agenda"
+          className="flex-1 bg-panel border border-line rounded-card p-4 hover:border-gold transition group"
+        >
+          <p className="font-display uppercase tracking-wide text-sm group-hover:text-gold transition">
+            📅 Agenda
+          </p>
+          <p className="text-xs text-muted mt-0.5">
+            Appuntamenti della settimana
+          </p>
+        </a>
+        <a
+          href="/dashboard/appuntamenti"
+          className="flex-1 bg-panel border border-line rounded-card p-4 hover:border-gold transition group"
+        >
+          <p className="font-display uppercase tracking-wide text-sm group-hover:text-gold transition">
+            🗓️ Calendario
+          </p>
+          <p className="text-xs text-muted mt-0.5">Gestisci gli slot disponibili</p>
+        </a>
       </div>
 
       {mostraForm && (
