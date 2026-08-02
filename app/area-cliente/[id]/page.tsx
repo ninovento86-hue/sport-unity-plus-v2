@@ -43,7 +43,6 @@ const VOCI_MENU: VoceMenu[] = [
     etichetta: "Prenota una lezione PT",
     descrizione: "In presenza — 15€ a lezione",
     href: "appuntamenti",
-    soloPremium: true,
   },
   {
     chiave: "messaggi",
