@@ -98,6 +98,7 @@ export default function SchedaCliente() {
   const [piano, setPiano] = useState<"plus" | "premium">("plus");
   const [pianoAlimentare, setPianoAlimentare] = useState("");
   const [datiId, setDatiId] = useState<string | null>(null);
+  const [altezza, setAltezza] = useState<string | null>(null);
 
   const [schede, setSchede] = useState<Scheda[]>([]);
   const [carichi, setCarichi] = useState<Record<string, string>>({});
@@ -171,6 +172,7 @@ export default function SchedaCliente() {
       setProssimaValutazione(dati.prossima_valutazione ?? "");
       setPiano(dati.piano === "premium" ? "premium" : "plus");
       setPianoAlimentare(dati.piano_alimentare ?? "");
+      setAltezza(dati.altezza_cm ? String(dati.altezza_cm) : null);
 
       if (dati.prossima_valutazione) {
         const { data: conferma } = await supabase
@@ -912,6 +914,9 @@ export default function SchedaCliente() {
         <h2 className="font-display uppercase text-lg mb-4">
           Check di valutazione
         </h2>
+        <p className="text-xs text-muted font-mono mb-4">
+          Altezza: {altezza ? `${altezza} cm` : "non impostata dal cliente"}
+        </p>
         <div className="bg-panel border border-line rounded-card p-6 mb-4">
           <StoricoCheck checks={checks} />
         </div>
@@ -1188,4 +1193,3 @@ export default function SchedaCliente() {
     </main>
   );
 }
-
