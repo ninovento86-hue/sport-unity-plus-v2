@@ -149,10 +149,14 @@ export default function CheckAreaCliente() {
 
   const salvaAltezza = async () => {
     setSalvandoAltezza(true);
-    await supabase
-      .from("dati_cliente")
-      .update({ altezza_cm: altezza ? parseFloat(altezza) : null })
-      .eq("client_id", id);
+    const { error } = await supabase.rpc("imposta_altezza", {
+      nuova_altezza: altezza ? parseFloat(altezza) : null,
+    });
+    if (error) {
+      alert(`Errore nel salvare l'altezza: ${error.message}`);
+      setSalvandoAltezza(false);
+      return;
+    }
     setAltezzaSalvata(altezza || null);
     setModificaAltezza(false);
     setSalvandoAltezza(false);
