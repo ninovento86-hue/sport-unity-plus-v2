@@ -42,6 +42,11 @@ export default function CheckAreaCliente() {
   const [piano, setPiano] = useState<"plus" | "premium">("plus");
   const [checks, setChecks] = useState<Check[]>([]);
 
+  const [altezza, setAltezza] = useState("");
+  const [altezzaSalvata, setAltezzaSalvata] = useState<string | null>(null);
+  const [modificaAltezza, setModificaAltezza] = useState(false);
+  const [salvandoAltezza, setSalvandoAltezza] = useState(false);
+
   const [prossimaValutazione, setProssimaValutazione] =
     useState<PrenotazioneValutazione | null>(null);
   const [slotLiberi, setSlotLiberi] = useState<Slot[]>([]);
@@ -49,11 +54,15 @@ export default function CheckAreaCliente() {
   const [errorePrenotazione, setErrorePrenotazione] = useState<string | null>(null);
 
   const [pesoNuovo, setPesoNuovo] = useState("");
-  const [grassoNuovo, setGrassoNuovo] = useState("");
-  const [magraNuova, setMagraNuova] = useState("");
+  const [vitaNuova, setVitaNuova] = useState("");
+  const [fianchiNuovi, setFianchiNuovi] = useState("");
+  const [pettoNuovo, setPettoNuovo] = useState("");
+  const [braccioNuovo, setBraccioNuovo] = useState("");
+  const [cosciaNuova, setCosciaNuova] = useState("");
   const [notaNuova, setNotaNuova] = useState("");
   const [caricando, setCaricando] = useState(true);
-  const [salvandoCheck, setSalvandoCheck] = useState(false);
+  const [inviandoDati, setInviandoDati] = useState(false);
+  const [datiInviati, setDatiInviati] = useState(false);
 
   const caricaTutto = async () => {
     const { data: profile } = await supabase
@@ -65,10 +74,12 @@ export default function CheckAreaCliente() {
 
     const { data: dati } = await supabase
       .from("dati_cliente")
-      .select("piano")
+      .select("piano, altezza_cm")
       .eq("client_id", id)
       .maybeSingle();
     setPiano(dati?.piano === "premium" ? "premium" : "plus");
+    setAltezzaSalvata(dati?.altezza_cm ? String(dati.altezza_cm) : null);
+    setAltezza(dati?.altezza_cm ? String(dati.altezza_cm) : "");
 
     // Prenotazione di valutazione attiva del cliente (richiesta o confermata)
     const { data: prenotazioneData } = await supabase
@@ -136,6 +147,17 @@ export default function CheckAreaCliente() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  const salvaAltezza = async () => {
+    setSalvandoAltezza(true);
+    await supabase
+      .from("dati_cliente")
+      .update({ altezza_cm: altezza ? parseFloat(altezza) : null })
+      .eq("client_id", id);
+    setAltezzaSalvata(altezza || null);
+    setModificaAltezza(false);
+    setSalvandoAltezza(false);
+  };
+
   const prenotaValutazione = async (slot: Slot) => {
     setErrorePrenotazione(null);
     setPrenotando(slot.id);
@@ -184,23 +206,44 @@ export default function CheckAreaCliente() {
     caricaTutto();
   };
 
-  const aggiungiCheck = async (e: React.FormEvent) => {
+  const inviaDati = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSalvandoCheck(true);
-    await supabase.from("check_valutazioni").insert({
-      client_id: id,
-      peso_kg: pesoNuovo ? parseFloat(pesoNuovo) : null,
-      massa_grassa_percentuale: grassoNuovo ? parseFloat(grassoNuovo) : null,
-      massa_magra_percentuale: magraNuova ? parseFloat(magraNuova) : null,
-      nota: notaNuova || null,
-      inserito_da: "cliente",
-    });
+    setInviandoDati(true);
+    setDatiInviati(false);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    await fetch("/api/notifica-trainer", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({
+        tipo: "dati_check",
+        client_id: id,
+        dettagli: {
+          peso_kg: pesoNuovo || null,
+          vita_cm: vitaNuova || null,
+          fianchi_cm: fianchiNuovi || null,
+          petto_cm: pettoNuovo || null,
+          braccio_cm: braccioNuovo || null,
+          coscia_cm: cosciaNuova || null,
+          nota: notaNuova || null,
+        },
+      }),
+    }).catch(() => {});
+
     setPesoNuovo("");
-    setGrassoNuovo("");
-    setMagraNuova("");
+    setVitaNuova("");
+    setFianchiNuovi("");
+    setPettoNuovo("");
+    setBraccioNuovo("");
+    setCosciaNuova("");
     setNotaNuova("");
-    setSalvandoCheck(false);
-    caricaTutto();
+    setInviandoDati(false);
+    setDatiInviati(true);
   };
 
   if (caricando) {
@@ -226,6 +269,42 @@ export default function CheckAreaCliente() {
         </h1>
         {piano === "premium" && (
           <PulsanteReportPDF nomeCliente={nome} checks={checks} />
+        )}
+      </div>
+
+      {/* Altezza — dato fisso */}
+      <div className="bg-panel border border-line rounded-card p-5 mb-6">
+        <p className="text-xs text-muted uppercase tracking-wide mb-2">Altezza</p>
+        {!modificaAltezza ? (
+          <div className="flex items-center justify-between">
+            <p className="text-sm">
+              {altezzaSalvata ? `${altezzaSalvata} cm` : "Non ancora impostata"}
+            </p>
+            <button
+              onClick={() => setModificaAltezza(true)}
+              className="text-xs text-gold"
+            >
+              {altezzaSalvata ? "modifica" : "imposta"}
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              type="number"
+              step="0.1"
+              placeholder="cm"
+              value={altezza}
+              onChange={(e) => setAltezza(e.target.value)}
+              className="flex-1 px-3 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            />
+            <button
+              onClick={salvaAltezza}
+              disabled={salvandoAltezza}
+              className="px-4 py-2 rounded-card bg-gold text-ink font-display uppercase text-xs tracking-wide disabled:opacity-50"
+            >
+              {salvandoAltezza ? "…" : "Salva"}
+            </button>
+          </div>
         )}
       </div>
 
@@ -325,34 +404,67 @@ export default function CheckAreaCliente() {
       </div>
 
       <form
-        onSubmit={aggiungiCheck}
+        onSubmit={inviaDati}
         className="bg-panel border border-line rounded-card p-6"
       >
-        <p className="text-sm text-muted mb-3">Registra un nuovo check</p>
-        <div className="grid grid-cols-3 gap-2 mb-3">
+        <p className="text-sm text-muted mb-1">Invia le tue misurazioni</p>
+        <p className="text-xs text-muted mb-3">
+          Il trainer le riceverà via email e registrerà il check ufficiale
+          (con anche massa grassa e magra).
+        </p>
+        <div className="mb-3">
           <input
             type="number"
             step="0.1"
             placeholder="Peso kg"
             value={pesoNuovo}
             onChange={(e) => setPesoNuovo(e.target.value)}
-            className="px-3 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            className="w-full px-3 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+          />
+        </div>
+        <p className="text-xs text-muted uppercase tracking-wide mb-2">
+          Circonferenze (cm)
+        </p>
+        <div className="grid grid-cols-5 gap-2 mb-3">
+          <input
+            type="number"
+            step="0.1"
+            placeholder="Vita"
+            value={vitaNuova}
+            onChange={(e) => setVitaNuova(e.target.value)}
+            className="px-2 py-2 rounded-card bg-ink border border-line text-paper text-sm"
           />
           <input
             type="number"
             step="0.1"
-            placeholder="Massa grassa %"
-            value={grassoNuovo}
-            onChange={(e) => setGrassoNuovo(e.target.value)}
-            className="px-3 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            placeholder="Fianchi"
+            value={fianchiNuovi}
+            onChange={(e) => setFianchiNuovi(e.target.value)}
+            className="px-2 py-2 rounded-card bg-ink border border-line text-paper text-sm"
           />
           <input
             type="number"
             step="0.1"
-            placeholder="Massa magra %"
-            value={magraNuova}
-            onChange={(e) => setMagraNuova(e.target.value)}
-            className="px-3 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+            placeholder="Petto"
+            value={pettoNuovo}
+            onChange={(e) => setPettoNuovo(e.target.value)}
+            className="px-2 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+          />
+          <input
+            type="number"
+            step="0.1"
+            placeholder="Braccio"
+            value={braccioNuovo}
+            onChange={(e) => setBraccioNuovo(e.target.value)}
+            className="px-2 py-2 rounded-card bg-ink border border-line text-paper text-sm"
+          />
+          <input
+            type="number"
+            step="0.1"
+            placeholder="Coscia"
+            value={cosciaNuova}
+            onChange={(e) => setCosciaNuova(e.target.value)}
+            className="px-2 py-2 rounded-card bg-ink border border-line text-paper text-sm"
           />
         </div>
         <input
@@ -364,11 +476,16 @@ export default function CheckAreaCliente() {
         />
         <button
           type="submit"
-          disabled={salvandoCheck}
+          disabled={inviandoDati}
           className="px-5 py-2 rounded-card bg-gold text-ink font-display uppercase text-sm tracking-wide disabled:opacity-50"
         >
-          {salvandoCheck ? "Salvataggio…" : "Salva check"}
+          {inviandoDati ? "Invio…" : "Invia al trainer"}
         </button>
+        {datiInviati && (
+          <p className="text-xs text-gold font-mono mt-3">
+            ✓ Dati inviati al trainer
+          </p>
+        )}
       </form>
     </main>
   );
