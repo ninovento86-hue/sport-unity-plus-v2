@@ -6,7 +6,6 @@ import { inviaEmail } from "@/lib/email";
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("authorization") ?? "";
   const token = authHeader.replace("Bearer ", "");
-
   const supabaseAsCaller = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
@@ -16,7 +15,6 @@ export async function POST(req: NextRequest) {
   const {
     data: { user },
   } = await supabaseAsCaller.auth.getUser();
-
   if (!user) {
     return NextResponse.json({ errore: "Non autenticato." }, { status: 401 });
   }
@@ -52,6 +50,21 @@ export async function POST(req: NextRequest) {
   } else if (tipo === "nuovo_messaggio") {
     oggetto = `Nuovo messaggio da ${cliente.nome_completo}`;
     testo = `${cliente.nome_completo} ti ha scritto:\n\n"${dettagli?.testo ?? ""}"\n\nRispondi dalla dashboard.`;
+  } else if (tipo === "dati_check") {
+    oggetto = `${cliente.nome_completo} ti ha inviato nuove misurazioni`;
+    const d = dettagli ?? {};
+    const righe = [
+      d.peso_kg ? `Peso: ${d.peso_kg} kg` : null,
+      d.vita_cm ? `Vita: ${d.vita_cm} cm` : null,
+      d.fianchi_cm ? `Fianchi: ${d.fianchi_cm} cm` : null,
+      d.petto_cm ? `Petto: ${d.petto_cm} cm` : null,
+      d.braccio_cm ? `Braccio: ${d.braccio_cm} cm` : null,
+      d.coscia_cm ? `Coscia: ${d.coscia_cm} cm` : null,
+      d.nota ? `Nota: ${d.nota}` : null,
+    ].filter(Boolean);
+    testo = `${cliente.nome_completo} ti ha inviato queste misurazioni:\n\n${righe.join(
+      "\n"
+    )}\n\nRicordati di registrare il check ufficiale (con massa grassa/magra) dalla dashboard.`;
   } else {
     return NextResponse.json({ errore: "Tipo non valido." }, { status: 400 });
   }
