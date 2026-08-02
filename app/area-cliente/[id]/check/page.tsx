@@ -21,6 +21,19 @@ type Check = {
   risposta_trainer: string | null;
 };
 
+type Slot = {
+  id: string;
+  data_ora: string;
+  durata_minuti: number;
+};
+
+type PrenotazioneValutazione = {
+  id: string;
+  slot_id: string;
+  stato: "richiesto" | "confermato" | "rifiutato" | "annullato";
+  data_ora: string;
+};
+
 export default function CheckAreaCliente() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -29,11 +42,11 @@ export default function CheckAreaCliente() {
   const [piano, setPiano] = useState<"plus" | "premium">("plus");
   const [checks, setChecks] = useState<Check[]>([]);
 
-  const [prossimaValutazione, setProssimaValutazione] = useState<string | null>(null);
-  const [confermaValutazione, setConfermaValutazione] = useState<
-    "in_attesa" | "confermato" | "annullato" | null
-  >(null);
-  const [salvandoConferma, setSalvandoConferma] = useState(false);
+  const [prossimaValutazione, setProssimaValutazione] =
+    useState<PrenotazioneValutazione | null>(null);
+  const [slotLiberi, setSlotLiberi] = useState<Slot[]>([]);
+  const [prenotando, setPrenotando] = useState<string | null>(null);
+  const [errorePrenotazione, setErrorePrenotazione] = useState<string | null>(null);
 
   const [pesoNuovo, setPesoNuovo] = useState("");
   const [grassoNuovo, setGrassoNuovo] = useState("");
@@ -52,23 +65,45 @@ export default function CheckAreaCliente() {
 
     const { data: dati } = await supabase
       .from("dati_cliente")
-      .select("piano, prossima_valutazione")
+      .select("piano")
       .eq("client_id", id)
       .maybeSingle();
     setPiano(dati?.piano === "premium" ? "premium" : "plus");
-    setProssimaValutazione(dati?.prossima_valutazione ?? null);
 
-    if (dati?.prossima_valutazione) {
-      const { data: conferma } = await supabase
-        .from("conferme_valutazione")
-        .select("stato")
-        .eq("client_id", id)
-        .eq("data_valutazione", dati.prossima_valutazione)
-        .maybeSingle();
-      setConfermaValutazione(conferma?.stato ?? "in_attesa");
+    // Prenotazione di valutazione attiva del cliente (richiesta o confermata)
+    const { data: prenotazioneData } = await supabase
+      .from("prenotazioni")
+      .select("id, slot_id, stato, slot_disponibili(data_ora)")
+      .eq("client_id", id)
+      .eq("tipo", "valutazione")
+      .in("stato", ["richiesto", "confermato"])
+      .maybeSingle();
+
+    if (prenotazioneData) {
+      setProssimaValutazione({
+        id: prenotazioneData.id,
+        slot_id: prenotazioneData.slot_id,
+        stato: prenotazioneData.stato,
+        data_ora: (prenotazioneData as any).slot_disponibili?.data_ora,
+      });
     } else {
-      setConfermaValutazione(null);
+      setProssimaValutazione(null);
     }
+
+    // Slot liberi (non occupati da nessuna prenotazione attiva)
+    const { data: tutteLePrenotazioni } = await supabase
+      .from("prenotazioni")
+      .select("slot_id")
+      .in("stato", ["richiesto", "confermato"]);
+    const idSlotOccupati = (tutteLePrenotazioni ?? []).map((p) => p.slot_id);
+
+    const { data: slotData } = await supabase
+      .from("slot_disponibili")
+      .select("id, data_ora, durata_minuti")
+      .gte("data_ora", new Date().toISOString())
+      .order("data_ora", { ascending: true });
+
+    setSlotLiberi((slotData ?? []).filter((s) => !idSlotOccupati.includes(s.id)));
 
     const { data: checkData } = await supabase
       .from("check_valutazioni")
@@ -101,20 +136,21 @@ export default function CheckAreaCliente() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const rispondiValutazione = async (stato: "confermato" | "annullato") => {
-    if (!prossimaValutazione) return;
-    setSalvandoConferma(true);
-    await supabase.from("conferme_valutazione").upsert(
-      {
-        client_id: id,
-        data_valutazione: prossimaValutazione,
-        stato,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "client_id,data_valutazione" }
-    );
-    setConfermaValutazione(stato);
-    setSalvandoConferma(false);
+  const prenotaValutazione = async (slot: Slot) => {
+    setErrorePrenotazione(null);
+    setPrenotando(slot.id);
+
+    const { error } = await supabase.from("prenotazioni").insert({
+      slot_id: slot.id,
+      client_id: id,
+      tipo: "valutazione",
+    });
+
+    if (error) {
+      setErrorePrenotazione(`Errore: ${error.message}`);
+      setPrenotando(null);
+      return;
+    }
 
     const {
       data: { session },
@@ -126,11 +162,26 @@ export default function CheckAreaCliente() {
         Authorization: `Bearer ${session?.access_token}`,
       },
       body: JSON.stringify({
-        tipo: "conferma_valutazione",
+        tipo: "richiesta_appuntamento",
         client_id: id,
-        dettagli: { stato, data: prossimaValutazione },
+        dettagli: {
+          data_ora: new Date(slot.data_ora).toLocaleString("it-IT"),
+          nota: "Valutazione",
+        },
       }),
     }).catch(() => {});
+
+    setPrenotando(null);
+    caricaTutto();
+  };
+
+  const annullaValutazione = async () => {
+    if (!prossimaValutazione) return;
+    await supabase
+      .from("prenotazioni")
+      .update({ stato: "annullato" })
+      .eq("id", prossimaValutazione.id);
+    caricaTutto();
   };
 
   const aggiungiCheck = async (e: React.FormEvent) => {
@@ -160,10 +211,6 @@ export default function CheckAreaCliente() {
     );
   }
 
-  const dataValutazione = prossimaValutazione
-    ? new Date(prossimaValutazione)
-    : null;
-
   return (
     <main className="min-h-screen px-6 py-10 max-w-2xl mx-auto">
       <a
@@ -182,59 +229,96 @@ export default function CheckAreaCliente() {
         )}
       </div>
 
-      {/* Prossima valutazione / conferma presenza */}
-      {dataValutazione && (
-        <div className="bg-panel border border-line rounded-card p-5 mb-6">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="bg-gold text-ink rounded-card px-4 py-2 text-center min-w-[56px]">
-              <p className="font-display text-xl leading-none">
-                {dataValutazione.getDate().toString().padStart(2, "0")}
-              </p>
-              <p className="font-mono text-[10px] uppercase">
-                {dataValutazione.toLocaleDateString("it-IT", { month: "short" })}
-              </p>
+      {/* Prossima valutazione: prenotata o da prenotare */}
+      <div className="bg-panel border border-line rounded-card p-5 mb-6">
+        {prossimaValutazione ? (
+          <>
+            <div className="flex items-center gap-4 mb-3">
+              <div className="bg-gold text-ink rounded-card px-4 py-2 text-center min-w-[56px]">
+                <p className="font-display text-xl leading-none">
+                  {new Date(prossimaValutazione.data_ora)
+                    .getDate()
+                    .toString()
+                    .padStart(2, "0")}
+                </p>
+                <p className="font-mono text-[10px] uppercase">
+                  {new Date(prossimaValutazione.data_ora).toLocaleDateString(
+                    "it-IT",
+                    { month: "short" }
+                  )}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted uppercase tracking-wide">
+                  Prossima valutazione
+                </p>
+                <p className="text-sm">
+                  {new Date(prossimaValutazione.data_ora).toLocaleDateString(
+                    "it-IT",
+                    {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }
+                  )}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-muted uppercase tracking-wide">
-                Prossima valutazione
-              </p>
-              <p className="text-sm">
-                {dataValutazione.toLocaleDateString("it-IT", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
-              </p>
-            </div>
-          </div>
-
-          {confermaValutazione === "confermato" ? (
-            <p className="text-xs font-mono text-gold">✓ Hai confermato la presenza</p>
-          ) : confermaValutazione === "annullato" ? (
-            <p className="text-xs font-mono text-muted">
-              Hai annullato — contatta il trainer per un nuovo appuntamento
+            <p className="text-xs font-mono mb-3">
+              {prossimaValutazione.stato === "confermato" ? (
+                <span className="text-gold">✓ Confermata dal trainer</span>
+              ) : (
+                <span className="text-muted">In attesa di conferma</span>
+              )}
             </p>
-          ) : (
-            <div className="flex gap-2">
-              <button
-                onClick={() => rispondiValutazione("confermato")}
-                disabled={salvandoConferma}
-                className="flex-1 py-2 rounded-card bg-gold text-ink font-display uppercase text-xs tracking-wide disabled:opacity-50"
-              >
-                Confermo
-              </button>
-              <button
-                onClick={() => rispondiValutazione("annullato")}
-                disabled={salvandoConferma}
-                className="flex-1 py-2 rounded-card border border-line text-muted font-display uppercase text-xs tracking-wide disabled:opacity-50"
-              >
-                Non posso venire
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+            <button
+              onClick={annullaValutazione}
+              className="text-xs text-muted hover:text-red-400"
+            >
+              annulla
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-muted mb-3">
+              Nessuna valutazione prenotata — scegli uno slot disponibile:
+            </p>
+            {slotLiberi.length === 0 ? (
+              <p className="text-muted text-sm">
+                Nessuno slot disponibile al momento.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-1">
+                {slotLiberi.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => prenotaValutazione(s)}
+                    disabled={prenotando === s.id}
+                    className="text-left px-4 py-2.5 rounded-card border border-line bg-ink hover:border-gold transition disabled:opacity-50"
+                  >
+                    <p className="text-sm">
+                      {new Date(s.data_ora).toLocaleString("it-IT", {
+                        weekday: "short",
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+            {errorePrenotazione && (
+              <p className="text-sm text-red-400 mt-3" role="alert">
+                {errorePrenotazione}
+              </p>
+            )}
+          </>
+        )}
+      </div>
 
       <div className="bg-panel border border-line rounded-card p-6 mb-4">
         <StoricoCheck checks={checks} />
