@@ -114,6 +114,35 @@ export default function Dashboard() {
     router.push("/");
   };
 
+  const esportaCSV = () => {
+    const intestazioni = ["Nome", "Email", "Piano", "Data iscrizione"];
+    const righe = clienti.map((c) => [
+      c.nome_completo,
+      c.email,
+      c.piano === "premium" ? "Premium" : "Plus",
+      new Date(c.created_at).toLocaleDateString("it-IT"),
+    ]);
+
+    const contenutoCSV = [intestazioni, ...righe]
+      .map((riga) =>
+        riga
+          .map((campo) => `"${String(campo).replace(/"/g, '""')}"`)
+          .join(",")
+      )
+      .join("\r\n");
+
+    // BOM per far leggere correttamente gli accenti a Excel
+    const blob = new Blob(["\uFEFF" + contenutoCSV], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `clienti-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const invitaCliente = async (e: React.FormEvent) => {
     e.preventDefault();
     setInviando(true);
@@ -169,12 +198,21 @@ export default function Dashboard() {
           </p>
           <h1 className="font-display text-3xl uppercase">I tuoi clienti</h1>
         </div>
-        <button
-          onClick={() => setMostraForm((v) => !v)}
-          className="px-5 py-2 rounded-card bg-gold text-ink font-display uppercase text-sm tracking-wide"
-        >
-          + Nuovo cliente
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={esportaCSV}
+            disabled={clienti.length === 0}
+            className="px-4 py-2 rounded-card border border-line text-muted hover:text-paper hover:border-gold transition font-display uppercase text-sm tracking-wide disabled:opacity-50"
+          >
+            ↓ CSV
+          </button>
+          <button
+            onClick={() => setMostraForm((v) => !v)}
+            className="px-5 py-2 rounded-card bg-gold text-ink font-display uppercase text-sm tracking-wide"
+          >
+            + Nuovo cliente
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-3 mb-10">
