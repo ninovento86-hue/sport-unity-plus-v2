@@ -198,6 +198,15 @@ export default function Dashboard() {
           </p>
           <p className="text-xs text-muted mt-0.5">Gestisci gli slot disponibili</p>
         </a>
+        <a
+          href="/dashboard/statistiche"
+          className="flex-1 bg-panel border border-line rounded-card p-4 hover:border-gold transition group"
+        >
+          <p className="font-display uppercase tracking-wide text-sm group-hover:text-gold transition">
+            📊 Statistiche
+          </p>
+          <p className="text-xs text-muted mt-0.5">Clienti e fatturato stimato</p>
+        </a>
       </div>
 
       {mostraForm && (
